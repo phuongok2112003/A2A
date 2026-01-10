@@ -1,32 +1,42 @@
 import asyncio
 import httpx
-from a2a.client import A2AClient
-from a2a.types import SendMessageRequest, MessageSendParams
 from uuid import uuid4
+from a2a.client import A2AClient
+from a2a.types import Message, TextPart, DataPart
+
 
 async def main():
     async with httpx.AsyncClient() as httpx_client:
-        # 1. Kết nối tới Agent Server thông qua URL
-        client = A2AClient(
-            httpx_client, url='http://localhost:10000'
+        client = A2AClient(httpx_client, url="http://localhost:10000")
+
+
+        message = Message(
+            messageId=uuid4().hex,
+            role="user",
+            parts=[
+                TextPart(text="Convert currency"),
+                DataPart(
+                    data={
+                        "amount": 100,
+                        "from": "USD",
+                        "to": "VND"
+                    }
+                )
+            ]
         )
 
-        # 2. Chuẩn bị nội dung yêu cầu
-        payload = {
-            'message': {
-                'role': 'user',
-                'parts': [{'type': 'text', 'text': 'Chuyển đổi 100 USD sang VND'}],
-                'messageId': uuid4().hex,
-            }
-        }
+        stream = await client.send_message_streaming(
+            agent_name="CurrencyExpert",
+            skill_id="currency_conversion",
+            message=message
+        )
 
-        # 3. Gửi tin nhắn và nhận phản hồi
-        request = SendMessageRequest(  id=1,  
-            jsonrpc="2.0",
-               method="message/send",
-            params=MessageSendParams(**payload))
-        response = await client.send_message(request)
-        print("Phản hồi từ Agent:", response)
+        async for event in stream:
+            if event.type == "message":
+                print("Agent:", event.message.parts[0].text)
+            elif event.type == "task_complete":
+                print("Task finished")
+
 
 if __name__ == "__main__":
     asyncio.run(main())

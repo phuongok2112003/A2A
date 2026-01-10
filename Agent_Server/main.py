@@ -5,39 +5,49 @@ from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore
 from agent_executor import CurrencyAgentExecutor
 
-# 1. Định nghĩa kỹ năng
-skills = [
-    AgentSkill(
-        id="skill-001", 
-        name="currency_conversion", 
-        description="Chuyển đổi các loại tiền tệ",
-        tags=["finance", "converter"]
-    )
-]
+# ===== 1. Định nghĩa Skill + Schema =====
 
-# 2. Tạo Agent Card (Lưu ý: version và url là bắt buộc)
-card = AgentCard(
+currency_skill = AgentSkill(
+    id="currency_conversion",
+    name="currency_conversion",
+    description="Convert currency from one unit to another",
+    tags=["finance", "currency"],
+    input_schema={
+        "type": "object",
+        "properties": {
+            "amount": {"type": "number"},
+            "from": {"type": "string"},
+            "to": {"type": "string"}
+        },
+        "required": ["amount", "from", "to"]
+    }
+)
+
+# ===== 2. Agent Card =====
+
+agent_card = AgentCard(
     name="CurrencyExpert",
-    description="Agent chuyên về tài chính và tỉ giá",
+    description="Financial agent for currency conversion",
     version="1.0.0",
     url="http://localhost:10000",
-    skills=skills,
-    default_input_modes=["text"],
+    skills=[currency_skill],
+    default_input_modes=["text", "data"],
     default_output_modes=["text"],
     capabilities=AgentCapabilities(streaming=True)
 )
 
-# 3. Khởi tạo Handler (Sử dụng tham số 'executor' trực tiếp)
-# Nếu vẫn báo lỗi keyword argument 'executor', hãy thử đổi thành 'agent_executor'
-request_handler = DefaultRequestHandler(
+# ===== 3. Request Handler =====
+
+handler = DefaultRequestHandler(
     task_store=InMemoryTaskStore(),
-    agent_executor=CurrencyAgentExecutor() 
+    agent_executor=CurrencyAgentExecutor()
 )
 
-# 4. Cấu hình App
+# ===== 4. Starlette App =====
+
 app = A2AStarletteApplication(
-    agent_card=card,
-    http_handler=request_handler
+    agent_card=agent_card,
+    http_handler=handler
 )
 
 if __name__ == "__main__":
