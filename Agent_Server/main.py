@@ -43,12 +43,16 @@ handler = DefaultRequestHandler(
     agent_executor=CurrencyAgentExecutor()
 )
 
-# ===== 4. Starlette App =====
+# ===== 4. Tạo A2A app và build ASGI app =====
 
-app = A2AStarletteApplication(
+a2a_app = A2AStarletteApplication(
     agent_card=agent_card,
     http_handler=handler
 )
 
+# ✅ QUAN TRỌNG: Gọi build() để tạo ASGI app
+app = a2a_app.build()  # 👈 ĐÂY LÀ KEY!
+
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=10000)
+    print("🚀 Starting CurrencyExpert Agent Server on http://localhost:10000")
+    uvicorn.run(app, host="0.0.0.0", port=10000, log_level="info")
