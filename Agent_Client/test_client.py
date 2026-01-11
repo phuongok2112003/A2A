@@ -41,7 +41,7 @@ async def main():
                 result = response.root.result
                 
                 print("--------------------------------------------------")
-                print(f"🔔 Received result: {result}")
+                print(f"🔔 Received result: {response}")
                 # Xử lý message từ agent
                 if hasattr(result, 'message') and result.message:
                     for part in result.message.parts:

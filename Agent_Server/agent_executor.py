@@ -1,7 +1,7 @@
 from a2a.server.agent_execution import AgentExecutor
 from a2a.types import Message, TextPart, Task, TaskStatus, TaskStatusUpdateEvent
 from uuid import uuid4
-
+import asyncio
 class CurrencyAgentExecutor(AgentExecutor):
 
     async def execute(self, context, event_queue):
@@ -13,8 +13,7 @@ class CurrencyAgentExecutor(AgentExecutor):
             # ===== 1. Gửi Task object đầu tiên =====
             initial_task = Task(
                 id=context.task_id,
-                taskId=context.task_id,
-                contextId=context.context_id,
+                context_id=context.context_id,
                 status=TaskStatus(state="working"),  # TaskStatus object
                 message=context.message
             )
@@ -39,7 +38,7 @@ class CurrencyAgentExecutor(AgentExecutor):
                 print("[ERROR] No data part found")
                 await event_queue.enqueue_event(
                     Message(
-                        messageId=uuid4().hex,
+                        message_id=uuid4().hex,
                         role="agent",
                         parts=[TextPart(text="Missing currency data.")]
                     )
@@ -48,8 +47,8 @@ class CurrencyAgentExecutor(AgentExecutor):
                 await event_queue.enqueue_event(
                     TaskStatusUpdateEvent(
                         id=uuid4().hex,
-                        taskId=context.task_id,
-                        contextId=context.context_id,
+                        task_id=context.task_id,
+                        context_id=context.context_id,
                         status=TaskStatus(state="completed"),
                         final=True
                     )
@@ -67,12 +66,20 @@ class CurrencyAgentExecutor(AgentExecutor):
             # ===== 5. Send processing message =====
             await event_queue.enqueue_event(
                 Message(
-                    messageId=uuid4().hex,
+                    message_id=uuid4().hex,
                     role="agent",
                     parts=[TextPart(text=f"Converting {amount} {from_ccy} to {to_ccy}...")]
                 )
             )
 
+
+            await event_queue.enqueue_event(
+                Message(
+                    message_id=uuid4().hex,
+                    role="agent",
+                    parts=[TextPart(text=f"Converting {amount} {from_ccy} to {to_ccy} hihihihihihihdfd===")]
+                )
+            )
             # ===== 6. Business logic =====
             if from_ccy == "USD" and to_ccy == "VND":
                 rate = 25400
@@ -87,7 +94,7 @@ class CurrencyAgentExecutor(AgentExecutor):
             # ===== 7. Send result =====
             await event_queue.enqueue_event(
                 Message(
-                    messageId=uuid4().hex,
+                    message_id=uuid4().hex,
                     role="agent",
                     parts=[TextPart(text=f"Result: {amount} {from_ccy} = {result:,.0f} {to_ccy}")]
                 )
@@ -98,8 +105,8 @@ class CurrencyAgentExecutor(AgentExecutor):
             await event_queue.enqueue_event(
                 TaskStatusUpdateEvent(
                     id=uuid4().hex,
-                    taskId=context.task_id,
-                    contextId=context.context_id,
+                    task_id=context.task_id,
+                    context_id=context.context_id,
                     status=TaskStatus(state="completed"),
                     final=True
                 )
@@ -107,6 +114,8 @@ class CurrencyAgentExecutor(AgentExecutor):
 
             # ===== 9. Close queue =====
             print("[INFO] Closing event queue")
+            print("[INFO] Waiting for events to flush...")
+            await asyncio.sleep(5)  # Đợi 0.5 giây để dữ liệu kịp đẩy xuống Client
             await event_queue.close()
             print("[INFO] Task completed successfully")
 
