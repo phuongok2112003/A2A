@@ -12,20 +12,18 @@ currency_skill = AgentSkill(
     name="currency_conversion",
     description="Convert currency from one unit to another",
     tags=["finance", "currency"],
-    input_schema={
-        "type": "object",
-        "properties": {
-            "amount": {"type": "number"},
-            "from": {"type": "string"},
-            "to": {"type": "string"}
-        },
-        "required": ["amount", "from", "to"]
-    }
 )
 
+extended_skill = AgentSkill(
+    id='super_hello_world',
+    name='Returns a SUPER Hello World',
+    description='A more enthusiastic greeting, only for authenticated users.',
+    tags=['hello world', 'super', 'extended'],
+    examples=['super hi', 'give me a super hello'],
+)
 # ===== 2. Agent Card =====
 
-agent_card = AgentCard(
+public_agent_card = AgentCard(
     name="CurrencyExpert",
     description="Financial agent for currency conversion",
     version="1.0.0",
@@ -33,7 +31,19 @@ agent_card = AgentCard(
     skills=[currency_skill],
     default_input_modes=["text", "data"],
     default_output_modes=["text"],
-    capabilities=AgentCapabilities(streaming=True)
+    capabilities=AgentCapabilities(streaming=True),
+    supportsAuthenticatedExtendedCard=True,
+)
+private_agent_card = AgentCard(
+    name="CurrencyExpert - Extended",
+    description="Extended capabilities for authenticated users",
+    version="1.0.0",
+    url="http://localhost:10000",
+    skills=[currency_skill, extended_skill],
+    default_input_modes=["text", "data"],
+    default_output_modes=["text"],
+    capabilities=AgentCapabilities(streaming=True),
+    supports_authenticated_extended_card=True,
 )
 
 # ===== 3. Request Handler =====
@@ -46,8 +56,9 @@ handler = DefaultRequestHandler(
 # ===== 4. Tạo A2A app và build ASGI app =====
 
 a2a_app = A2AStarletteApplication(
-    agent_card=agent_card,
-    http_handler=handler
+    agent_card=public_agent_card,
+    http_handler=handler,
+    extended_agent_card=private_agent_card,
 )
 
 # ✅ QUAN TRỌNG: Gọi build() để tạo ASGI app

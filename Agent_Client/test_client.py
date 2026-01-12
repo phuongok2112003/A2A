@@ -1,13 +1,34 @@
 import asyncio
 import httpx
 from uuid import uuid4
-from a2a.client import A2AClient
-from a2a.types import Message, TextPart, DataPart, SendStreamingMessageRequest
-
+from a2a.client import A2AClient, A2ACardResolver, ClientFactory, ClientConfig
+from a2a.types import Message, TextPart, DataPart, SendStreamingMessageRequest, AgentCard
+import pprint
 
 async def main():
     async with httpx.AsyncClient() as httpx_client:
-        client = A2AClient(httpx_client, url="http://localhost:10000")
+        PUBLIC_AGENT_CARD_PATH = '/.well-known/agent.json'
+        PRIVATE_AGENT_CARD_PATH = '/agent/authenticatedExtendedCard'
+        resolver = A2ACardResolver(
+            httpx_client=httpx_client,
+            base_url="http://localhost:10000",
+            agent_card_path=PUBLIC_AGENT_CARD_PATH
+        )
+        agent_card: AgentCard = await resolver.get_agent_card()
+        pprint.pp(f"✅ Fetched Agent Card: {agent_card}")
+
+        if agent_card.supports_authenticated_extended_card:
+            private_card = await resolver.get_agent_card(
+                relative_card_path=PRIVATE_AGENT_CARD_PATH,
+                http_kwargs={ "headers": { "Authorization": "Bearer my_secret_token" } }
+            )
+            pprint.pp(f"✅ Fetched Private Agent Card: {private_card}")
+
+      
+        config = ClientConfig(httpx_client=httpx_client)
+        factory = ClientFactory(config)
+
+        client = factory.create(private_card)
 
         # ✅ Tạo Message
         message = Message(
@@ -29,7 +50,6 @@ async def main():
         request = SendStreamingMessageRequest(
             id=uuid4().hex,
             params={
-                "skillId": "currency_conversion",
                 "message": message
             }
         )
@@ -37,23 +57,19 @@ async def main():
         print("📤 Sending currency conversion request...")
 
         try:
-            async for response in client.send_message_streaming(request):
-                result = response.root.result
+            async for task, update in client.send_message(request=message):
+                print(f"Task {task}")
+                print(f"Update {update}")
+                if update:  # Ưu tiên event update nếu có
+                    text = update.status.message.parts if update.status.message else ""
+                    print("🤖 Agent update:", text)
+                elif task and task.status.message:
+                    text = task.status.message.parts
+                    print("🤖 Task status:", text)
                 
-                print("--------------------------------------------------")
-                print(f"🔔 Received result: {response}")
-                # Xử lý message từ agent
-                if hasattr(result, 'message') and result.message:
-                    for part in result.message.parts:
-                        if hasattr(part, 'text'):
-                            print(f"🤖 Agent: {part.text}")
-                
-                # Xử lý status update
-                if hasattr(result, 'status'):
-                    print(f"📊 Status: {result.status}")
-                    if result.status == "completed":
-                        print("✅ Task completed!")
-        
+                if update and update.final:
+                    print("✅ Stream completed!")
+
         except Exception as e:
             print(f"❌ Error: {e}")
             import traceback
