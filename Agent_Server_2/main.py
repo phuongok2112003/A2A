@@ -3,8 +3,8 @@ from a2a.types import AgentCard, AgentSkill, AgentCapabilities
 from a2a.server.apps import A2AStarletteApplication
 from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore
-from agent_executor import CurrencyAgentExecutor  # Giả sử bạn sẽ tạo file này sau
-
+from .agent_executor import CurrencyAgentExecutor  # Giả sử bạn sẽ tạo file này sau
+from config.settings import settings
 # ===== 1. Định nghĩa các Skill mới =====
 
 travel_skill = AgentSkill(
@@ -49,7 +49,7 @@ public_agent_card = AgentCard(
     name="TravelBuddy",
     description="Your friendly AI travel companion – suggest destinations, itineraries, translations, and weather checks",
     version="1.0.0",
-    url="http://localhost:10001",
+    url=settings.BASE_URL + settings.AGENT_2_PATH,
     skills=[travel_skill, weather_skill],
     default_input_modes=["text", "data"],
     default_output_modes=["text"],
@@ -61,7 +61,7 @@ private_agent_card = AgentCard(
     name="TravelBuddy - Premium",
     description="Extended version with instant translation and advanced travel planning for authenticated users",
     version="1.0.0",
-    url="http://localhost:10001",
+    url=settings.BASE_URL + settings.AGENT_2_PATH,
     skills=[travel_skill, translate_skill, weather_skill],
     default_input_modes=["text", "data"],
     default_output_modes=["text"],
@@ -84,9 +84,8 @@ a2a_app = A2AStarletteApplication(
     extended_agent_card=private_agent_card,
 )
 
-# ✅ Quan trọng: Gọi build() để tạo ASGI app
 app = a2a_app.build()
 
-if __name__ == "__main__":
-    print("🚀 Starting TravelBuddy Agent Server on http://localhost:10001")
-    uvicorn.run(app, host="0.0.0.0", port=10001, log_level="info")
+# if __name__ == "__main__":
+#     print("🚀 Starting TravelBuddy Agent Server on http://localhost:10001")
+#     uvicorn.run(app, host="0.0.0.0", port=10001, log_level="info")

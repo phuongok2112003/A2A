@@ -3,8 +3,8 @@ from a2a.types import AgentCard, AgentSkill, AgentCapabilities
 from a2a.server.apps import A2AStarletteApplication
 from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore
-from agent_executor import CurrencyAgentExecutor
-
+from .agent_executor import CurrencyAgentExecutor
+from config.settings import settings
 # ===== 1. Định nghĩa Skill + Schema =====
 
 currency_skill = AgentSkill(
@@ -27,7 +27,7 @@ public_agent_card = AgentCard(
     name="CurrencyExpert",
     description="Financial agent for currency conversion",
     version="1.0.0",
-    url="http://localhost:10000",
+    url=settings.BASE_URL + settings.AGENT_1_PATH,
     skills=[currency_skill],
     default_input_modes=["text", "data"],
     default_output_modes=["text"],
@@ -38,7 +38,7 @@ private_agent_card = AgentCard(
     name="CurrencyExpert - Extended",
     description="Extended capabilities for authenticated users",
     version="1.0.0",
-    url="http://localhost:10000",
+    url=settings.BASE_URL + settings.AGENT_1_PATH,
     skills=[currency_skill, extended_skill],
     default_input_modes=["text", "data"],
     default_output_modes=["text"],
@@ -61,9 +61,8 @@ a2a_app = A2AStarletteApplication(
     extended_agent_card=private_agent_card,
 )
 
-# ✅ QUAN TRỌNG: Gọi build() để tạo ASGI app
-app = a2a_app.build()  # 👈 ĐÂY LÀ KEY!
+app = a2a_app.build()  
 
-if __name__ == "__main__":
-    print("🚀 Starting CurrencyExpert Agent Server on http://localhost:10000")
-    uvicorn.run(app, host="0.0.0.0", port=10000, log_level="info")
+# if __name__ == "__main__":
+#     print("🚀 Starting CurrencyExpert Agent Server on http://localhost:10000")
+#     uvicorn.run(app, host="0.0.0.0", port=10000, log_level="info")

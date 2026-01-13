@@ -7,7 +7,7 @@ import pprint
 
 async def main():
     async with httpx.AsyncClient() as httpx_client:
-        PUBLIC_AGENT_CARD_PATH = '/.well-known/agent.json'
+        PUBLIC_AGENT_CARD_PATH = '/.well-known/agent-card.json'
         PRIVATE_AGENT_CARD_PATH = '/agent/authenticatedExtendedCard'
         resolver = A2ACardResolver(
             httpx_client=httpx_client,
@@ -34,6 +34,7 @@ async def main():
         message = Message(
             messageId=uuid4().hex,
             role="user",
+            context_id="1db07da4-02e7-4156-a0f9-4d4f14783758",
             parts=[
                 TextPart(text="Convert currency"),
                 DataPart(
@@ -58,18 +59,32 @@ async def main():
 
         try:
             async for task, update in client.send_message(request=message):
-                print(f"Task {task}")
-                print(f"Update {update}")
-                if update:  # Ưu tiên event update nếu có
-                    text = update.status.message.parts if update.status.message else ""
-                    print("🤖 Agent update:", text)
-                elif task and task.status.message:
-                    text = task.status.message.parts
-                    print("🤖 Task status:", text)
-                
-                if update and update.final:
-                    print("✅ Stream completed!")
+                print(f"Task: {task}")
+                print(f"Update: {update}")
+                if task:
+                    # snapshot của task
+                    if task.status and task.status.message:
+                        for p in task.status.message.parts:
+                            print("📦 Task:", p.root.text)
 
+                if update:
+                    if update.kind == "status-update":
+                        if update.status and update.status.message:
+                            for p in update.status.message.parts:
+                                print("📊 Status:", p.root.text)
+
+                    elif update.kind == "artifact-update":
+                        if update.artifact:
+                            for p in update.artifact.parts:
+                                print("📦 Artifact:", p.root.text)
+
+                    elif update.kind == "message":
+                        for p in update.parts:
+                            print("🤖 Message:", p.root.text)
+
+                    if getattr(update, "final", False):
+                        print("✅ Stream completed")
+                        break
         except Exception as e:
             print(f"❌ Error: {e}")
             import traceback

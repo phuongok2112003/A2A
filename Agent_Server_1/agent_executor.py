@@ -9,11 +9,13 @@ from a2a.types import (
     Task,
     TaskStatus,
     TaskStatusUpdateEvent,
+    TaskArtifactUpdateEvent,
     Message,
     TextPart,
+    Artifact
 )
-
-
+from a2a.utils import new_agent_text_message, new_task
+from a2a.server.tasks import TaskUpdater
 class CurrencyAgentExecutor(AgentExecutor):
     """
     Currency conversion agent using A2A task-based streaming.
@@ -39,19 +41,23 @@ class CurrencyAgentExecutor(AgentExecutor):
             print("[INFO] Starting currency conversion task")
             print(f"[INFO] Task ID: {context.task_id}")
             print(f"[INFO] Context ID: {context.context_id}")
+            print(f"[DEBUG] Message parts: {context.get_user_input()}")
+            
 
-            # 1. Send initial Task (required)
-            initial_task = Task(
-                id=context.task_id,
-                context_id=context.context_id,
-                status=self._create_status(
-                    "working",
-                    "Received conversion request. Processing..."
-                ),
-                message=context.message,  # Keep original user message
+            task = context.current_task
+            if not task:
+                print("[INFO] Creating initial task from message")
+                task = new_task(context.message)
+
+            print("[INFO] Enqueuing initial Task ")
+            await event_queue.enqueue_event(task)
+            updater = TaskUpdater(event_queue = event_queue,task_id = task.id,context_id = task.context_id)
+
+
+            await updater.update_status(
+                state="working",
+                message=new_agent_text_message("Processing currency conversion...",task.context_id, task.id)
             )
-            print("[INFO] Enqueuing initial Task")
-            await event_queue.enqueue_event(initial_task)
 
             # 2. Extract data from message parts
             data = None
@@ -88,18 +94,16 @@ class CurrencyAgentExecutor(AgentExecutor):
 
             print(f"[INFO] Converting: {amount} {from_ccy} → {to_ccy}")
 
-            # 4. Send processing update (final=False vì chưa xong)
-            await event_queue.enqueue_event(
-                TaskStatusUpdateEvent(
-                    task_id=context.task_id,
-                    context_id=context.context_id,
-                    status=self._create_status(
-                        "working",
-                        f"Converting {amount} {from_ccy} to {to_ccy}..."
-                    ),
-                    final=False,  # Explicitly set (though default may be False)
-                )
-            )
+
+            await updater.add_artifact(
+                name="conversion-progress",
+                artifact_id=uuid4().hex,
+                parts=[
+                    TextPart(
+                        text=f"Converting {amount} {from_ccy} to {to_ccy}..."
+                    )
+                ]
+            ) 
 
             # 5. Business logic
             if from_ccy == "USD" and to_ccy == "VND":
@@ -118,19 +122,17 @@ class CurrencyAgentExecutor(AgentExecutor):
                 f"{amount:,.2f} {from_ccy} = {result:,.0f} {to_ccy}\n"
                 f"Exchange rate: {rate:,.4f}"
             )
-            await event_queue.enqueue_event(
-                TaskStatusUpdateEvent(
-                    task_id=context.task_id,
-                    context_id=context.context_id,
-                    status=self._create_status("completed", result_text),
-                    final=True,  # Required for final event
-                )
+
+            await updater.update_status(
+                state="completed",
+                message=new_agent_text_message(result_text,task.context_id, task.id)
             )
 
             # 7. Flush and close
             print("[INFO] Flushing events...")
-            await asyncio.sleep(0.6)
+
             print("[INFO] Closing event queue")
+            # await updater.complete()
             await event_queue.close()
 
             print("[INFO] Task completed successfully")
