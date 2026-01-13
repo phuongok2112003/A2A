@@ -1,8 +1,11 @@
 from langchain_google_genai import ChatGoogleGenerativeAI
-
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.agents import AgentExecutor, create_tool_calling_agent
 from langchain import hub
+from langchain_core.chat_history import BaseChatMessageHistory
+from memory_store import MemoryStore
+from langchain_core.runnables import RunnableWithMessageHistory
+from config.settings import settings
 def gen_agent_executor(llm,tools,context=None):
         llm_with_tools = llm.bind_tools(tools)
 
@@ -43,17 +46,39 @@ def gen_agent_executor(llm,tools,context=None):
             tools=tools,
             verbose=True, # Hiển thị các bước hoạt động của Agent
             handle_parsing_errors=True # Xử lý lỗi nếu LLM trả về định dạng không đúng
+        
+        
+        
         )
+memory_store = MemoryStore()
+def get_session_history(context_id: str) -> BaseChatMessageHistory:
+            return memory_store.get_memory(context_id)
+
 
 class AgentCustom:
     def __init__(self):
         self.llm = ChatGoogleGenerativeAI(
-            model="models/gemini-2.5-pro", temperature=0.2
+            model="models/gemini-2.5-pro", temperature=0.2, google_api_key= settings.GOOGLE_A2A_API_KEY
         )
-    def invoke_agent(self):
+        self.agent = self.gen_agent()
+
+        self.conversational_agent_chain = RunnableWithMessageHistory(
+            self.agent, 
+            get_session_history,
+            input_messages_key="input",
+            history_messages_key="chat_history",
+            output_messages_key="output"
+        )
+
+    def gen_agent(self):
         agent = gen_agent_executor(
             llm=self.llm,
             tools=[],
             context="Bạn có thể sử dụng các công cụ để hỗ trợ trả lời câu hỏi của người dùng."
         )
         return agent
+    def run(self,user_input, context_id):
+        return self.conversational_agent_chain.invoke(
+                    {"input": user_input},
+                    config={"configurable": {"context_id": context_id}}
+                )
