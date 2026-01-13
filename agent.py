@@ -1,85 +1,95 @@
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.agents import create_agent
-from langchain_core.agents import AgentExecutor
-from langchain import hub
-from langchain_core.chat_history import BaseChatMessageHistory
-from memory_store import MemoryStore
-from langchain_core.runnables import RunnableWithMessageHistory
+from langchain_core.tools import tool
+from langchain_core.messages import SystemMessage, HumanMessage
+from langgraph.checkpoint.memory import MemorySaver
 from config.settings import settings
-def gen_agent_executor(llm,tools,context=None):
-        llm_with_tools = llm.bind_tools(tools)
 
-        # Chọn prompt dựa trên loại LLM
-        # if isinstance(llm, ChatOpenAI):
-        #     # Sử dụng prompt chuẩn cho OpenAI
-        #     agent_prompt = hub.pull("hwchase17/openai-tools-agent")
-        #     print(agent_prompt)
-        # else:
-            # Sử dụng prompt tùy chỉnh cho Gemini
-        custom_system_message = f"""Bạn là một trợ lý hữu ích và thông minh.
-    Bạn có khả năng trả lời các câu hỏi trực tiếp.
-    Bạn cũng có thể sử dụng các công cụ sau đây để tìm kiếm thông tin hoặc thực hiện tác vụ:
-    {context if context else ""}
+
+import unicodedata
+
+def normalize(text: str) -> str:
+    return unicodedata.normalize("NFKD", text)\
+        .encode("ascii", "ignore")\
+        .decode("utf-8")\
+        .lower()
+
+@tool
+def get_weather(city: str) -> dict:
+    """
+    Lấy thời tiết hiện tại của một thành phố
+    """
+    c = normalize(city)
+
+    if c in ["ha noi", "hanoi"]:
+        return {"city": "Hà Nội", "temp": 30, "condition": "nắng"}
+
+    if c in ["sai gon", "saigon"]:
+        return {"city": "TP.HCM", "temp": 33, "condition": "nóng"}
+
+    return {"error": "not_found", "city": city}
+
+
+
+# ===============================
+# 1. System Prompt
+# ===============================
+
+SYSTEM_PROMPT = """
+Bạn là một trợ lý hữu ích và thông minh.
+Bạn có khả năng trả lời các câu hỏi trực tiếp.
+Bạn cũng có thể sử dụng các công cụ để hỗ trợ trả lời.
 """
-        print(f"\n\n\nprompt nao {custom_system_message}\n\n\n")
+system_prompt = SystemMessage(content=SYSTEM_PROMPT)
 
-        agent_prompt = ChatPromptTemplate.from_messages(
-                [
-                    ("system", custom_system_message),
-                    MessagesPlaceholder(variable_name="chat_history"),
-                    ("human", "{input}"),
-                    MessagesPlaceholder(variable_name="agent_scratchpad"),
-                ]
-            )
+# ===============================
+# 2. Agent Factory
+# ===============================
 
-        # Tạo agent
-        # Agent là "bộ não" quyết định khi nào và công cụ nào cần gọi.
-        agent = create_agent(
-            model=llm_with_tools, # LLM đã được bind tools
-            tools=tools,
-            prompt=agent_prompt
-        )
+def gen_agent(tools=None):
+    if tools is None:
+        tools = [get_weather]
 
+    llm = ChatGoogleGenerativeAI(
+        model="models/gemini-2.5-flash",
+        temperature=0.2,
+        google_api_key=settings.GOOGLE_A2A_API_KEY,
+    )
 
-        return AgentExecutor(
-            agent=agent,
-            tools=tools,
-            verbose=True, # Hiển thị các bước hoạt động của Agent
-            handle_parsing_errors=True # Xử lý lỗi nếu LLM trả về định dạng không đúng
-        
-        
-        
-        )
-memory_store = MemoryStore()
-def get_session_history(context_id: str) -> BaseChatMessageHistory:
-            return memory_store.get_memory(context_id)
+    # Memory cho mỗi thread (mỗi context_id)
+    checkpointer = MemorySaver()
 
+    agent = create_agent(
+        model=llm,
+        tools=tools,
+        system_prompt=system_prompt,
+        checkpointer=checkpointer,
+        name="gemini-agent",
+        debug=True
+    )
 
+    return agent
 class AgentCustom:
     def __init__(self):
-        self.llm = ChatGoogleGenerativeAI(
-            model="models/gemini-2.5-pro", temperature=0.2, google_api_key= settings.GOOGLE_A2A_API_KEY
-        )
-        self.agent = self.gen_agent()
+        self.agent = gen_agent()
 
-        self.conversational_agent_chain = RunnableWithMessageHistory(
-            self.agent, 
-            get_session_history,
-            input_messages_key="input",
-            history_messages_key="chat_history",
-            output_messages_key="output"
+    def run(self, user_input: str, context_id: str):
+        """
+        context_id = conversation_id
+        """
+
+        result = self.agent.invoke(
+            {
+                "messages": [
+                    HumanMessage(content=user_input)
+                ]
+            },
+            config={
+                "configurable": {
+                    "thread_id": context_id   # LangGraph memory key
+                }
+            }
         )
 
-    def gen_agent(self):
-        agent = gen_agent_executor(
-            llm=self.llm,
-            tools=[],
-            context="Bạn có thể sử dụng các công cụ để hỗ trợ trả lời câu hỏi của người dùng."
-        )
-        return agent
-    def run(self,user_input, context_id):
-        return self.conversational_agent_chain.invoke(
-                    {"input": user_input},
-                    config={"configurable": {"context_id": context_id}}
-                )
+        # result["messages"] là toàn bộ lịch sử
+        return result["messages"][-1].content
