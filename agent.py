@@ -1,6 +1,7 @@
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain.agents import AgentExecutor, create_tool_calling_agent
+from langchain.agents import create_agent
+from langchain_core.agents import AgentExecutor
 from langchain import hub
 from langchain_core.chat_history import BaseChatMessageHistory
 from memory_store import MemoryStore
@@ -34,8 +35,8 @@ def gen_agent_executor(llm,tools,context=None):
 
         # Tạo agent
         # Agent là "bộ não" quyết định khi nào và công cụ nào cần gọi.
-        agent = create_tool_calling_agent(
-            llm=llm_with_tools, # LLM đã được bind tools
+        agent = create_agent(
+            model=llm_with_tools, # LLM đã được bind tools
             tools=tools,
             prompt=agent_prompt
         )
