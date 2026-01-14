@@ -2,3 +2,4 @@ a2a-sdk[all]
 uvicorn
 langchian
 langchain_google_genai
+elasticsearch==7.17.9

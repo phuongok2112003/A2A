@@ -3,8 +3,9 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime
 from uuid import uuid4
-
+from typing import List
 from a2a.server.agent_execution import AgentExecutor
+from .tools import tools
 from a2a.types import (
     Task,
     TaskStatus,
@@ -12,7 +13,7 @@ from a2a.types import (
     Message,
     TextPart,
 )
-
+from agent import AgentCustom
 
 class CurrencyAgentExecutor(AgentExecutor):
     """
@@ -21,6 +22,18 @@ class CurrencyAgentExecutor(AgentExecutor):
     - All messages wrapped in TaskStatus.message (Message object).
     - Fixed: Added required 'final' field to TaskStatusUpdateEvent.
     """
+
+    def __init__(self):
+        super().__init__()
+        self.agent = None  # No internal agent needed for this executor
+    
+    @classmethod
+    async def create(cls, access_agent_urls: List[str] = [], **kwargs) -> CurrencyAgentExecutor:
+        self = cls(**kwargs)
+        self.agent = await AgentCustom.create(
+            access_agent_urls=access_agent_urls,
+        )
+        return self
 
     def _create_status(self, state: str, text: str) -> TaskStatus:
         """Helper to create TaskStatus with correct Message object."""

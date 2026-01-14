@@ -1,13 +1,20 @@
 from agent import AgentCustom
 from config.settings import settings
+from Agent_Server_1.tools import tools
 
-agent = AgentCustom()
+access_agent_urls = [
+    settings.BASE_URL + settings.AGENT_1_PATH, settings.BASE_URL + settings.AGENT_2_PATH,
+]
+async def main():
+    user_input = input("Bạn: ")
 
-user_input = input("Bạn: ")
+    context_id = "test_context_1234s"  # Sử dụng một context_id cố định cho ví dụ này
+    agent = await AgentCustom.create(
+            access_agent_urls=access_agent_urls,
+        )
+    response = await agent.run(user_input = user_input, context_id=context_id)
+    print("Trợ lý:", response)
 
-context_id = "test_context_123"  # Sử dụng một context_id cố định cho ví dụ này
-
-response = agent.run(user_input = user_input, context_id=context_id)
-
-print("Trợ lý:", response)
-
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(main())

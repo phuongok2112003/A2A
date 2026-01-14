@@ -70,10 +70,16 @@ private_agent_card = AgentCard(
 )
 
 # ===== 3. Request Handler =====
+async def get_agent_executor() ->CurrencyAgentExecutor:
+    return await CurrencyAgentExecutor.create(
+        access_agent_urls=[
+            settings.BASE_URL + settings.AGENT_1_PATH
+        ]
+    )
 
 handler = DefaultRequestHandler(
     task_store=InMemoryTaskStore(),
-    agent_executor=CurrencyAgentExecutor()  # Bạn cần tạo class TravelBuddyExecutor sau
+    agent_executor=get_agent_executor  # Bạn cần tạo class TravelBuddyExecutor sau
 )
 
 # ===== 4. Tạo A2A app và build ASGI app =====

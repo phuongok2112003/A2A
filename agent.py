@@ -4,81 +4,269 @@ from langchain_core.tools import tool
 from langchain_core.messages import SystemMessage, HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
 from config.settings import settings
-
-
-import unicodedata
-
-def normalize(text: str) -> str:
-    return unicodedata.normalize("NFKD", text)\
-        .encode("ascii", "ignore")\
-        .decode("utf-8")\
-        .lower()
-
-@tool
-def get_weather(city: str) -> dict:
-    """
-    Lấy thời tiết hiện tại của một thành phố
-    """
-    c = normalize(city)
-
-    if c in ["ha noi", "hanoi"]:
-        return {"city": "Hà Nội", "temp": 30, "condition": "nắng"}
-
-    if c in ["sai gon", "saigon"]:
-        return {"city": "TP.HCM", "temp": 33, "condition": "nóng"}
-
-    return {"error": "not_found", "city": city}
-
-
+from memory.elasticsearch_saver import ElasticsearchCheckpointSaver
+from elasticsearch import Elasticsearch
+from typing import List, Optional, Dict, Any, Annotated
+from langchain_core.runnables import RunnableConfig
+from pydantic import BaseModel, Field
+from langchain_core.tools import StructuredTool, InjectedToolArg
+from Agent_Client.client_a2a import create_client_for_agent, send_to_server_agent
+from a2a.types import Message, TextPart, DataPart, FilePart
+from uuid import uuid4
+import mimetypes
+import os
+from a2a.types import FileWithBytes
 
 # ===============================
-# 1. System Prompt
+# System Prompt
 # ===============================
 
 SYSTEM_PROMPT = """
 Bạn là một trợ lý hữu ích và thông minh.
 Bạn có khả năng trả lời các câu hỏi trực tiếp.
-Bạn cũng có thể sử dụng các công cụ để hỗ trợ trả lời.
+Bạn có quyền truy cập vào một mạng lưới các chuyên gia (Agent khác).
+Hãy sử dụng công cụ 'call_external_agent' để nhờ họ giúp đỡ khi câu hỏi nằm ngoài khả năng hoặc cần chuyên môn sâu.
 """
-system_prompt = SystemMessage(content=SYSTEM_PROMPT)
 
-# ===============================
-# 2. Agent Factory
-# ===============================
+class DispatcherInput(BaseModel):
+    agent_name: str = Field(description="Tên chính xác của agent cần gọi (lấy từ danh sách mô tả)")
+    query: str = Field(description="Nội dung câu hỏi hoặc yêu cầu cần gửi tới agent đó")
 
-def gen_agent(tools=None):
-    if tools is None:
-        tools = [get_weather]
-
-    llm = ChatGoogleGenerativeAI(
-        model="models/gemini-2.5-flash",
-        temperature=0.2,
-        google_api_key=settings.GOOGLE_A2A_API_KEY,
+    extra_data: Optional[Dict[str, Any]] = Field(
+        default=None, 
+        description="Dữ liệu cấu trúc JSON bổ sung nếu cần (ví dụ: thông tin user, params config)."
+    )
+    file_path: Optional[str] = Field(
+        default=None, 
+        description="Đường dẫn file (local path) hoặc File ID nếu câu hỏi yêu cầu xử lý file."
     )
 
-    # Memory cho mỗi thread (mỗi context_id)
-    checkpointer = MemorySaver()
 
-    agent = create_agent(
-        model=llm,
-        tools=tools,
-        system_prompt=system_prompt,
-        checkpointer=checkpointer,
-        name="gemini-agent",
-        debug=True
-    )
-
-    return agent
 class AgentCustom:
-    def __init__(self):
-        self.agent = gen_agent()
+    def __init__(self, tools=None, system_prompt : str = SYSTEM_PROMPT, index_elastic: str = "langgraph_checkpoints"):
+        self.system_prompt = system_prompt
+        self.index_elastic = index_elastic
+        self.tools = tools if tools else []
+        self.agent_registry = {}
+        self.agent = None
+    @classmethod
+    async def create(cls, access_agent_urls: List[str] = [], **kwargs):
+        self = cls(**kwargs)
+      
+        if access_agent_urls:
+            await self._discover_and_register_agents(access_agent_urls)
+            
+            if self.agent_registry:
+                dispatcher_tool = self._create_dispatcher_tool()
+                self.tools.append(dispatcher_tool)
+      
+        self.agent = self.gen_agent()
+        
+        return self
 
-    def run(self, user_input: str, context_id: str):
+    async def _discover_and_register_agents(self, urls: List[str]):
+        """
+        Gửi request tới từng URL để lấy Card và lưu vào Registry
+        """
+        print(f"--- Bắt đầu quét {len(urls)} agent URLs ---")
+        
+        for base_url in urls:
+            try:
+              
+                client, httpx_client, public_card, private_card = await create_client_for_agent(base_url=base_url, auth_token="BerearerTokenExample")
+
+                if public_card.supports_authenticated_extended_card:
+                    private_name = private_card.name
+                  
+                    self.agent_registry[private_name] = {
+                        "url": private_card.url,
+                        "description": private_card.description,
+                        "skills":  private_card.skills,
+                        "client": client
+                    }
+
+
+                public_name = public_card.name
+                
+                self.agent_registry[public_name] = {
+                    "url": public_card.url,
+                    "description": public_card.description,
+                    "skills": public_card.skills,
+                    "client": client
+                }
+                
+                print(f" Đăng ký agent '{public_name}' từ {base_url}")
+                
+            except Exception as e:
+                print(f" Lỗi khi kết nối tới {base_url}: {e}")
+
+    def _create_dispatcher_tool(self):
+        """
+        Tạo ra một Tool động dựa trên self.agent_registry
+        """
+        
+        agents_desc_str = "\n".join(
+            [f"- Tên: '{name}': {info['description']}" for name, info in self.agent_registry.items()]
+        )
+
+        print(f"======Tạo Dispatcher Tool với các agent sau:\n{agents_desc_str}\n\n\n")
+        
+        
+        async def call_agent_impl(agent_name: str, query: str, extra_data: Optional[dict] = None, 
+            file_path: Optional[str] = None, config: Annotated[RunnableConfig, InjectedToolArg] = None,
+           
+            ) -> dict:
+            print(f"\n--- Gọi agent '{agent_name}' với câu hỏi: {query} ---")
+            print(f"Extra Data: {extra_data}")
+            print(f"File Path: {file_path}")
+           
+            agent_info = self.agent_registry.get(agent_name)
+
+            current_thread_id = config.get("configurable", {}).get("thread_id")
+            
+            # Fallback nếu không có
+            if not current_thread_id:
+                current_thread_id = uuid4().hex 
+
+            print(f"Đang xử lý trong Context ID: {current_thread_id}")
+
+            if not agent_info:
+                return f"Lỗi: Không tìm thấy agent tên '{agent_name}' trong danh bạ."
+            
+            
+            parts = [TextPart(text=query)]
+            data_payload = extra_data if extra_data else None
+            if data_payload:
+                parts.append(DataPart(data=data_payload))
+
+            if file_path and os.path.exists(file_path):
+                try:
+                    # Đoán mime type (vd: image/png, application/pdf)
+                    mime_type, _ = mimetypes.guess_type(file_path)
+                    if not mime_type:
+                        mime_type = "application/octet-stream"
+
+                   
+                    with open(file_path, "rb") as f:
+                        base64 = f.base64()
+                    
+                    # Giả định cấu trúc class FilePart của bạn
+                    file_part = FilePart(
+                        file=FileWithBytes(
+                            bytes= base64,
+                            mime_type=mime_type,
+                            name = os.path.basename(file_path)
+                        )
+                    )
+                    parts.append(file_part)
+                    print(f"Đã đính kèm file: {file_path}")
+                except Exception as e:
+                    return f"Lỗi khi đọc file {file_path}: {str(e)}"
+            elif file_path:
+                return f"Lỗi: Agent tìm thấy tham số file_path='{file_path}' nhưng file không tồn tại trên server."
+
+          
+            message = Message(
+                messageId=uuid4().hex,
+                role="user",
+                context_id=current_thread_id,
+                parts= parts
+            )
+            
+            print(f"Đang gọi {agent_name} tại {agent_info['url']}...")
+            full_response_accumulator = []
+            try:
+                # --- VÒNG LẶP HỨNG DỮ LIỆU TỪ GENERATOR ---
+                async for chunk_text in send_to_server_agent(client=agent_info['client'], message=message):
+                    
+                    if chunk_text:
+ 
+                        print(chunk_text, end="\n", flush=True)
+                        full_response_accumulator.append(chunk_text)
+
+                # Kết thúc stream, trả về nội dung đầy đủ
+                final_result = "\n".join(full_response_accumulator)
+                return final_result if final_result else "Agent đã chạy xong nhưng không trả về nội dung text nào."
+
+            except Exception as e:
+                return f"Lỗi khi gọi {agent_name}: {str(e)}"
+
+        # 3. Tạo Tool Object với mô tả động
+        return StructuredTool.from_function(
+            func=None,
+            coroutine=call_agent_impl,
+            name="call_external_agent",
+            description=f"""
+            Sử dụng công cụ này để kết nối và gửi yêu cầu tới các Agent chuyên gia khác.
+            Dựa vào danh sách dưới đây để chọn 'agent_name' phù hợp nhất với yêu cầu của người dùng.
+            
+            DANH SÁCH AGENT KHẢ DỤNG:
+            {agents_desc_str}
+            """,
+            args_schema=DispatcherInput # Validate input đầu vào
+        )
+    
+    def gen_agent(self):
+        
+        llm = ChatGoogleGenerativeAI(
+            model="models/gemini-2.5-flash",
+            temperature=0.2,
+            google_api_key=settings.GOOGLE_A2A_API_KEY,
+        )
+
+
+        # Memory với Elasticsearch
+        print("Connecting to Elasticsearch at", settings.ELASTICSEARCH_URL)
+        es = Elasticsearch(settings.ELASTICSEARCH_URL)
+        
+        try:
+            if not  es.indices.exists(index=self.index_elastic):
+                es.indices.create(index=self.index_elastic,
+                                    body={
+                                            "mappings": {
+                                                "properties": {
+                                                    "thread_id":      { "type": "keyword" },
+                                                    "checkpoint_id":  { "type": "keyword" },
+                                                    "ts":             { "type": "date" },
+
+                                                    "config":         { "type": "text", "index": False },
+                                                    "checkpoint":     { "type": "text", "index": False },
+                                                    "metadata":       { "type": "text", "index": False },
+                                                    "channel_versions": { "type": "text", "index": False }
+                                                }
+                                            }
+                                        }
+                                    )
+
+        except Exception as e:
+            raise ValueError(f"Elasticsearch connection error: {e}")
+
+        # Memory cho mỗi thread (mỗi context_id)
+        checkpointer = MemorySaver()
+
+        # checkpointer = ElasticsearchCheckpointSaver(
+        #     es=es,
+        #     index=self.index_elastic
+        # )   
+
+        agent = create_agent(
+            model=llm,
+            tools=self.tools,
+            system_prompt=self.system_prompt,
+            checkpointer=checkpointer,
+            name="gemini-agent",
+            debug=True,
+        )
+     
+
+        return agent
+
+    async def run(self, user_input: str, context_id: str):
         """
         context_id = conversation_id
         """
 
-        result = self.agent.invoke(
+        result = await  self.agent.ainvoke(
             {
                 "messages": [
                     HumanMessage(content=user_input)
