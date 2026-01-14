@@ -1,4 +1,5 @@
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_openai import ChatOpenAI
 from langchain.agents import create_agent
 from langchain_core.tools import tool
 from langchain_core.messages import SystemMessage, HumanMessage
@@ -208,10 +209,16 @@ class AgentCustom:
     
     def gen_agent(self):
         
-        llm = ChatGoogleGenerativeAI(
-            model="models/gemini-2.5-flash",
+        llm_gemini = ChatGoogleGenerativeAI(
+            model="models/gemini-2.0-flash",
             temperature=0.2,
             google_api_key=settings.GOOGLE_A2A_API_KEY,
+        )
+        llm_openai = ChatOpenAI(
+            model_name="deepseek-r1:latest",
+            temperature=0.2,
+            openai_api_key=settings.OPENAI_A2A_API_KEY,
+            openai_api_base="http://100.122.222.112:11434/api/generate",
         )
 
 
@@ -250,7 +257,7 @@ class AgentCustom:
         # )   
 
         agent = create_agent(
-            model=llm,
+            model=llm_openai,
             tools=self.tools,
             system_prompt=self.system_prompt,
             checkpointer=checkpointer,
@@ -265,19 +272,22 @@ class AgentCustom:
         """
         context_id = conversation_id
         """
+        try:
 
-        result = await  self.agent.ainvoke(
-            {
-                "messages": [
-                    HumanMessage(content=user_input)
-                ]
-            },
-            config={
-                "configurable": {
-                    "thread_id": context_id   # LangGraph memory key
+            result = await  self.agent.ainvoke(
+                {
+                    "messages": [
+                        HumanMessage(content=user_input)
+                    ]
+                },
+                config={
+                    "configurable": {
+                        "thread_id": context_id   # LangGraph memory key
+                    }
                 }
-            }
-        )
+            )
 
-        # result["messages"] là toàn bộ lịch sử
-        return result["messages"][-1].content
+            # result["messages"] là toàn bộ lịch sử
+            return result["messages"][-1].content
+        except Exception as e:
+            return f"Lỗi khi chạy agent: {str(e)}"
