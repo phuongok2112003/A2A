@@ -35,7 +35,7 @@ class CurrencyAgentExecutor(AgentExecutor):
     async def create_agent(self):
         if self.agent is None:
             self.agent = await AgentCustom.create(
-                access_agent_urls=self.access_agent_urls,
+                access_agent_urls=self.access_agent_urls, tools=tools
             )
            
     def _create_status(self, state: str, text: str) -> TaskStatus:

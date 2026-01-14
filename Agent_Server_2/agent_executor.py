@@ -3,18 +3,22 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime
 from uuid import uuid4
-from typing import List
+
 from a2a.server.agent_execution import AgentExecutor
-from .tools import tools
 from a2a.types import (
     Task,
     TaskStatus,
     TaskStatusUpdateEvent,
+    TaskArtifactUpdateEvent,
     Message,
     TextPart,
+    Artifact
 )
+from a2a.utils import new_agent_text_message, new_task
+from a2a.server.tasks import TaskUpdater
 from agent import AgentCustom
-
+from .tools import tools
+from typing import List
 class CurrencyAgentExecutor(AgentExecutor):
     """
     Currency conversion agent using A2A task-based streaming.
@@ -22,19 +26,18 @@ class CurrencyAgentExecutor(AgentExecutor):
     - All messages wrapped in TaskStatus.message (Message object).
     - Fixed: Added required 'final' field to TaskStatusUpdateEvent.
     """
-
-    def __init__(self):
+    def __init__(self,access_agent_urls: List[str] = []):
         super().__init__()
-        self.agent = None  # No internal agent needed for this executor
-    
-    @classmethod
-    async def create(cls, access_agent_urls: List[str] = [], **kwargs) -> CurrencyAgentExecutor:
-        self = cls(**kwargs)
-        self.agent = await AgentCustom.create(
-            access_agent_urls=access_agent_urls,
-        )
-        return self
+        self.agent = None
+        self.access_agent_urls = access_agent_urls
 
+
+    async def create_agent(self):
+        if self.agent is None:
+            self.agent = await AgentCustom.create(
+                access_agent_urls=self.access_agent_urls, tools=tools
+            )
+           
     def _create_status(self, state: str, text: str) -> TaskStatus:
         """Helper to create TaskStatus with correct Message object."""
         return TaskStatus(
@@ -49,101 +52,39 @@ class CurrencyAgentExecutor(AgentExecutor):
 
     async def execute(self, context, event_queue):
         try:
+            await self.create_agent()
             print("[INFO] Starting currency conversion task")
             print(f"[INFO] Task ID: {context.task_id}")
             print(f"[INFO] Context ID: {context.context_id}")
+            print(f"[DEBUG] Message parts: {context.get_user_input()}")
+            
 
-            # 1. Send initial Task (required)
-            initial_task = Task(
-                id=context.task_id,
-                context_id=context.context_id,
-                status=self._create_status(
-                    "working",
-                    "Received conversion request. Processing..."
-                ),
-                message=context.message,  # Keep original user message
-            )
-            print("[INFO] Enqueuing initial Task")
-            await event_queue.enqueue_event(initial_task)
+            task = context.current_task
+            if not task:
+                print("[INFO] Creating initial task from message")
+                task = new_task(context.message)
 
-            # 2. Extract data from message parts
-            data = None
-            for part in context.message.parts:
-                actual_part = part.root
-                if actual_part.kind == "data":
-                    data = actual_part.data
-                    print(f"[DEBUG] Found data: {data}")
-                    break
+            print("[INFO] Enqueuing initial Task ")
+            await event_queue.enqueue_event(task)
+            updater = TaskUpdater(event_queue = event_queue,task_id = task.id,context_id = task.context_id)
 
-            if not data:
-                print("[ERROR] No data part found")
-                await self._send_error_and_complete(
-                    event_queue, context, "Missing or invalid currency data.", final=True
-                )
-                return
 
-            # 3. Parse amount and currencies
-            try:
-                amount = float(data.get("amount", 0))
-                from_ccy = data.get("from", "").upper()
-                to_ccy = data.get("to", "").upper()
-            except (ValueError, TypeError):
-                await self._send_error_and_complete(
-                    event_queue, context, "Invalid amount or currency code.", final=True
-                )
-                return
-
-            if amount <= 0 or not from_ccy or not to_ccy:
-                await self._send_error_and_complete(
-                    event_queue, context, "Amount must be positive and currencies required.", final=True
-                )
-                return
-
-            print(f"[INFO] Converting: {amount} {from_ccy} → {to_ccy}")
-
-            # 4. Send processing update (final=False vì chưa xong)
-            await event_queue.enqueue_event(
-                TaskStatusUpdateEvent(
-                    task_id=context.task_id,
-                    context_id=context.context_id,
-                    status=self._create_status(
-                        "working",
-                        f"Converting {amount} {from_ccy} to {to_ccy}..."
-                    ),
-                    final=False,  # Explicitly set (though default may be False)
-                )
+            await updater.update_status(
+                state="working",
+                message=new_agent_text_message("Processing currency conversion...",task.context_id, task.id)
             )
 
-            # 5. Business logic
-            if from_ccy == "USD" and to_ccy == "VND":
-                rate = 25400.0
-            elif from_ccy == "VND" and to_ccy == "USD":
-                rate = 1 / 25400.0
-            else:
-                rate = 1.0  # Fallback
 
-            result = amount * rate
-            await asyncio.sleep(0.4)  # Simulate delay
-
-            # 6. Send final result (final=True)
-            result_text = (
-                f"Conversion completed!\n"
-                f"{amount:,.2f} {from_ccy} = {result:,.0f} {to_ccy}\n"
-                f"Exchange rate: {rate:,.4f}"
-            )
-            await event_queue.enqueue_event(
-                TaskStatusUpdateEvent(
-                    task_id=context.task_id,
-                    context_id=context.context_id,
-                    status=self._create_status("completed", result_text),
-                    final=True,  # Required for final event
-                )
+            
+            result_text = await self.agent.run(user_input=context.get_user_input(), context_id=context.context_id)
+            print(f"[INFO] Conversion result: {result_text}")
+            await updater.update_status(
+                state="completed",
+                message=new_agent_text_message(result_text,task.context_id, task.id)
             )
 
-            # 7. Flush and close
-            print("[INFO] Flushing events...")
-            await asyncio.sleep(0.6)
-            print("[INFO] Closing event queue")
+
+            # await updater.complete()
             await event_queue.close()
 
             print("[INFO] Task completed successfully")

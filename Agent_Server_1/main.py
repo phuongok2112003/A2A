@@ -50,7 +50,7 @@ private_agent_card = AgentCard(
 
 handler = DefaultRequestHandler(
     task_store=InMemoryTaskStore(),
-    agent_executor=CurrencyAgentExecutor()
+    agent_executor=CurrencyAgentExecutor(access_agent_urls=[settings.BASE_URL+settings.AGENT_2_PATH])
 )
 
 # ===== 4. Tạo A2A app và build ASGI app =====
