@@ -11,7 +11,7 @@ async def main():
     context_id = "test_context_1234sdfe"  # Sử dụng một context_id cố định cho ví dụ này
     agent = await AgentCustom.create(
             access_agent_urls=access_agent_urls,
-            tools=tools
+            # tools=tools
         )
     
     agent.get_info_tool()

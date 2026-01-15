@@ -67,11 +67,11 @@ class ElasticsearchCheckpointSaver(BaseCheckpointSaver[int]):
             "thread_id": thread_id,
             "checkpoint_id": checkpoint_id,
             "ts": checkpoint["ts"],
-            "config": self.serde.dumps(safe_config).decode("utf-8"),
-            "checkpoint": self.serde.dumps(safe_checkpoint).decode("utf-8"),
-            "metadata": self.serde.dumps(safe_metadata).decode("utf-8") if safe_metadata else None,
-            "channel_versions": self.serde.dumps(new_versions).decode("utf-8"),
-            "channel_versions": self.serde.dumps(new_versions).decode("utf-8"),
+            "config": self.serde.dumps_typed(safe_config).decode("utf-8"),
+            "checkpoint": self.serde.dumps_typed(safe_checkpoint).decode("utf-8"),
+            "metadata": self.serde.dumps_typed(safe_metadata).decode("utf-8") if safe_metadata else None,
+            "channel_versions": self.serde.dumps_typed(new_versions).decode("utf-8"),
+            "channel_versions": self.serde.dumps_typed(new_versions).decode("utf-8"),
         }
 
         self.es.index(index=self.index, id=f"{thread_id}:{checkpoint_id}", document=doc)
@@ -95,7 +95,7 @@ class ElasticsearchCheckpointSaver(BaseCheckpointSaver[int]):
 
         # Serialize danh sách writes
         safe_writes = [(channel, convert_normalize(value)) for channel, value in writes]
-        serialized_writes = self.serde.dumps(safe_writes).decode("utf-8")
+        serialized_writes = self.serde.dumps_typed(safe_writes).decode("utf-8")
 
         doc = {
             "type": "writes", # Đánh dấu đây là dữ liệu writes
@@ -127,9 +127,9 @@ class ElasticsearchCheckpointSaver(BaseCheckpointSaver[int]):
         from langgraph.checkpoint.base import CheckpointTuple
 
         return CheckpointTuple(
-            config=self.serde.loads(doc["config"]),
-            checkpoint=self.serde.loads(doc["checkpoint"]),
-            metadata=self.serde.loads(doc["metadata"]),
+            config=self.serde.loads_typed(doc["config"]),
+            checkpoint=self.serde.loads_typed(doc["checkpoint"]),
+            metadata=self.serde.loads_typed(doc["metadata"]),
             parent_config=None,
             pending_writes=None,
         )

@@ -124,7 +124,7 @@ class AgentCustom:
         async def call_agent_impl(agent_name: str, query: str, extra_data: Optional[dict] = None, 
             file_path: Optional[str] = None, config: Annotated[RunnableConfig, InjectedToolArg] = None,
            
-            ) -> dict:
+            ) -> List[dict]:
             print(f"\n--- Gọi agent '{agent_name}' với câu hỏi: {query} ---")
             print(f"Extra Data: {extra_data}")
             print(f"File Path: {file_path}")
@@ -195,7 +195,9 @@ class AgentCustom:
 
                 # Kết thúc stream, trả về nội dung đầy đủ
                 final_result = "\n".join(full_response_accumulator)
-                return final_result if final_result else "Agent đã chạy xong nhưng không trả về nội dung text nào."
+                print(f"\n--- Kết thúc cuộc gọi tới {agent_name} ---\n")
+                print(final_result)
+                return full_response_accumulator if final_result else "Agent đã chạy xong nhưng không trả về nội dung text nào."
 
             except Exception as e:
                 return f"Lỗi khi gọi {agent_name}: {str(e)}"
@@ -256,13 +258,13 @@ class AgentCustom:
         except Exception as e:
             raise ValueError(f"Elasticsearch connection error: {e}")
 
-        # Memory cho mỗi thread (mỗi context_id)
-        checkpointer = MemorySaver()
+        # # Memory cho mỗi thread (mỗi context_id)
+        # checkpointer = MemorySaver()
 
-        # checkpointer = ElasticsearchCheckpointSaver(
-        #     es=es,
-        #     index=self.index_elastic
-        # )   
+        checkpointer = ElasticsearchCheckpointSaver(
+            es=es,
+            index=self.index_elastic
+        )   
 
         agent = create_agent(
             model=llm_gemini,
