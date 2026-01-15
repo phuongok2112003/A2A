@@ -19,25 +19,18 @@ from a2a.server.tasks import TaskUpdater
 from agent import AgentCustom
 from .tools import tools
 from typing import List
-class CurrencyAgentExecutor(AgentExecutor):
+from Agent_Server.agent_executor import BaseAgentExecutor
+from typing import Callable
+class CurrencyAgentExecutor(BaseAgentExecutor):
     """
     Currency conversion agent using A2A task-based streaming.
     - Sends initial Task → multiple TaskStatusUpdateEvent → final status with final=True.
     - All messages wrapped in TaskStatus.message (Message object).
     - Fixed: Added required 'final' field to TaskStatusUpdateEvent.
     """
-    def __init__(self,access_agent_urls: List[str] = []):
-        super().__init__()
-        self.agent = None
-        self.access_agent_urls = access_agent_urls
-
-
-    async def create_agent(self):
-        if self.agent is None:
-            self.agent = await AgentCustom.create(
-                access_agent_urls=self.access_agent_urls, tools=tools
-            )
-           
+    def __init__(self,access_agent_urls: List[str] = [], tools: List = [Callable]):
+        super().__init__(access_agent_urls=access_agent_urls, tools=tools)
+       
     def _create_status(self, state: str, text: str) -> TaskStatus:
         """Helper to create TaskStatus with correct Message object."""
         return TaskStatus(

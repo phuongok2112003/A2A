@@ -8,10 +8,14 @@ access_agent_urls = [
 async def main():
     user_input = input("Bạn: ")
 
-    context_id = "test_context_1234s"  # Sử dụng một context_id cố định cho ví dụ này
+    context_id = "test_context_1234sdfe"  # Sử dụng một context_id cố định cho ví dụ này
     agent = await AgentCustom.create(
             access_agent_urls=access_agent_urls,
+            tools=tools
         )
+    
+    agent.get_info_tool()
+    
     response = await agent.run(user_input = user_input, context_id=context_id)
     print("Trợ lý:", response)
 

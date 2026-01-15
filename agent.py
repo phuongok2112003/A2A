@@ -64,6 +64,14 @@ class AgentCustom:
         self.agent = self.gen_agent()
         
         return self
+    
+    def get_info_tool(self):
+    
+        for tool in self.tools:
+            print(f"Checking tool: {tool.name}")
+            print(f"Type: {type(tool)}")
+            print(f"Description: {tool.description}")
+ 
 
     async def _discover_and_register_agents(self, urls: List[str]):
         """
@@ -257,7 +265,7 @@ class AgentCustom:
         # )   
 
         agent = create_agent(
-            model=llm_openai,
+            model=llm_gemini,
             tools=self.tools,
             system_prompt=self.system_prompt,
             checkpointer=checkpointer,
@@ -290,4 +298,4 @@ class AgentCustom:
             # result["messages"] là toàn bộ lịch sử
             return result["messages"][-1].content
         except Exception as e:
-            return f"Lỗi khi chạy agent: {str(e)}"
+            return f"Lỗi khi chạy agent: {e}"

@@ -1,17 +1,23 @@
 import uvicorn
 from fastapi import FastAPI
-from Agent_Server_1.main import app as agent1_app
-from Agent_Server_2.main import app as agent2_app
+from Agent_Server_1.agent_server_1 import server_agent_1
+from Agent_Server_2.agent_server_2 import server_agent_2
 from config.settings import settings
 from a2a.types import Message, TextPart, DataPart, Part
 from uuid import uuid4
+from contextlib import asynccontextmanager
 from Agent_Client.client_a2a import create_client_for_agent, send_to_server_agent
-app = FastAPI(title="Currency Agent Platform")
 
-# Mount A2A into FastAPI
-app.mount(settings.AGENT_1_PATH, agent1_app)
-app.mount(settings.AGENT_2_PATH, agent2_app)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    app.state.agent1_app = await server_agent_1.build()
+    app.state.agent2_app = await server_agent_2.build()
 
+    app.mount(settings.AGENT_1_PATH, app.state.agent1_app)
+    app.mount(settings.AGENT_2_PATH, app.state.agent2_app)
+    yield
+
+app = FastAPI(title="Currency Agent Platform", lifespan=lifespan)
 
 # normal APIs
 @app.get("/health")
