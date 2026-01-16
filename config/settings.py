@@ -10,5 +10,6 @@ class Settings(BaseSettings):
     BASE_URL: str = os.getenv("BASE_URL", "http://localhost:10000")
     ELASTICSEARCH_URL: str = os.getenv("ELASTICSEARCH_URL", "http://localhost:9200")
     OPENAI_A2A_API_KEY: str = os.getenv("OPENAI_A2A_API_KEY", "your_openai_api_key")
+    APP_NAME: str = "A2A_Application"
 
 settings = Settings()

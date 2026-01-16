@@ -17,7 +17,10 @@ from uuid import uuid4
 import mimetypes
 import os
 from a2a.types import FileWithBytes
-
+from config.logger import log
+import traceback
+from  langchain.messages import SystemMessage
+import base64
 # ===============================
 # System Prompt
 # ===============================
@@ -88,21 +91,21 @@ class AgentCustom:
                     private_name = private_card.name
                   
                     self.agent_registry[private_name] = {
+                        "card": private_card,
+                        "client": client,
                         "url": private_card.url,
-                        "description": private_card.description,
-                        "skills":  private_card.skills,
-                        "client": client
+                        "scope": "private",
                     }
 
-
                 public_name = public_card.name
+
                 
                 self.agent_registry[public_name] = {
-                    "url": public_card.url,
-                    "description": public_card.description,
-                    "skills": public_card.skills,
-                    "client": client
-                }
+                        "card": public_card,
+                        "client": client,
+                        "url": public_card.url,
+                        "scope": "public",
+                    }
                 
                 print(f" Đăng ký agent '{public_name}' từ {base_url}")
                 
@@ -114,9 +117,19 @@ class AgentCustom:
         Tạo ra một Tool động dựa trên self.agent_registry
         """
         
-        agents_desc_str = "\n".join(
-            [f"- Tên: '{name}': {info['description']}" for name, info in self.agent_registry.items()]
-        )
+        
+
+        agents_desc_str = "\n\n".join(
+                f"""Agent Name: {name}
+            Description: {card.description}
+
+            Skills:
+            {chr(10).join(f"- {skill.name}: {skill.description}" for skill in card.skills)}
+            """
+                for name, card in (
+                    (name, info["card"]) for name, info in self.agent_registry.items()
+                )
+            )
 
         print(f"======Tạo Dispatcher Tool với các agent sau:\n{agents_desc_str}\n\n\n")
         
@@ -124,7 +137,7 @@ class AgentCustom:
         async def call_agent_impl(agent_name: str, query: str, extra_data: Optional[dict] = None, 
             file_path: Optional[str] = None, config: Annotated[RunnableConfig, InjectedToolArg] = None,
            
-            ) -> List[dict]:
+            ) -> str:
             print(f"\n--- Gọi agent '{agent_name}' với câu hỏi: {query} ---")
             print(f"Extra Data: {extra_data}")
             print(f"File Path: {file_path}")
@@ -142,7 +155,12 @@ class AgentCustom:
             if not agent_info:
                 return f"Lỗi: Không tìm thấy agent tên '{agent_name}' trong danh bạ."
             
-            
+            agent_card = agent_info["card"]
+            agent_client = agent_info["client"]
+            agent_url = agent_info["url"]
+
+            print(f"Đang gọi {agent_name} tại {agent_url}...")
+
             parts = [TextPart(text=query)]
             data_payload = extra_data if extra_data else None
             if data_payload:
@@ -157,12 +175,12 @@ class AgentCustom:
 
                    
                     with open(file_path, "rb") as f:
-                        base64 = f.base64()
+                        base64_bytes = base64.b64encode(f.read()).decode("utf-8")
                     
                     # Giả định cấu trúc class FilePart của bạn
                     file_part = FilePart(
                         file=FileWithBytes(
-                            bytes= base64,
+                            bytes= base64_bytes,
                             mime_type=mime_type,
                             name = os.path.basename(file_path)
                         )
@@ -183,21 +201,20 @@ class AgentCustom:
             )
             
             print(f"Đang gọi {agent_name} tại {agent_info['url']}...")
-            full_response_accumulator = []
+            final_result = None
             try:
                 # --- VÒNG LẶP HỨNG DỮ LIỆU TỪ GENERATOR ---
-                async for chunk_text in send_to_server_agent(client=agent_info['client'], message=message):
+                async for chunk_text in send_to_server_agent(client=agent_client, message=message):
                     
                     if chunk_text:
  
-                        print(chunk_text, end="\n", flush=True)
-                        full_response_accumulator.append(chunk_text)
+                        print("====Chunk Text",chunk_text, end="\n\n", flush=True)
+                        if chunk_text.get("final") == True:
+                            final_result = chunk_text.get("text")
+                            break
 
-                # Kết thúc stream, trả về nội dung đầy đủ
-                final_result = "\n".join(full_response_accumulator)
-                print(f"\n--- Kết thúc cuộc gọi tới {agent_name} ---\n")
-                print(final_result)
-                return full_response_accumulator if final_result else "Agent đã chạy xong nhưng không trả về nội dung text nào."
+                print("Final resuldt huhu",final_result, end="\n\n", flush=True)
+                return final_result if final_result else "Agent đã chạy xong nhưng không trả về nội dung text nào."
 
             except Exception as e:
                 return f"Lỗi khi gọi {agent_name}: {str(e)}"
@@ -283,8 +300,9 @@ class AgentCustom:
         context_id = conversation_id
         """
         try:
+        
 
-            result = await  self.agent.ainvoke(
+            result = await self.agent.ainvoke(
                 {
                     "messages": [
                         HumanMessage(content=user_input)
@@ -300,4 +318,5 @@ class AgentCustom:
             # result["messages"] là toàn bộ lịch sử
             return result["messages"][-1].content
         except Exception as e:
+            log.error(f"Lỗi khi chạy agent: {e}  {traceback.format_exc()}")
             return f"Lỗi khi chạy agent: {e}"

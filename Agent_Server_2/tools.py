@@ -14,7 +14,7 @@ def get_weather(city: str) -> dict:
     """
     c = normalize(city)
 
-    if c in ["ha noi", "hanoi"]:
+    if c in ["ha noi", "hanoi","Hà Nội"]:
         return {"city": "Hà Nội", "temp": 30, "condition": "nắng"}
 
     if c in ["sai gon", "saigon"]:

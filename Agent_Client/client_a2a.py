@@ -62,7 +62,7 @@ async def send_to_server_agent(client : Client, message : Message):
                             for p in update.status.message.parts:
                                 print("Status:", p.root.text)
                                 yield {
-                                    "task": None,
+                                    "task": task,
                                     "update": update,
                                     "final": False,
                                     "text": p.root.text
@@ -73,7 +73,7 @@ async def send_to_server_agent(client : Client, message : Message):
                             for p in update.artifact.parts:
                                 print("Artifact:", p.root.text)
                                 yield {
-                                    "task": None,
+                                    "task": task,
                                     "update": update,
                                     "final": False,
                                     "text": p.root.text
@@ -83,7 +83,7 @@ async def send_to_server_agent(client : Client, message : Message):
                         for p in update.parts:
                             print("Message:", p.root.text)
                             yield {
-                                "task": None,
+                                "task": task,
                                 "update": update,
                                 "final": False,
                                 "text": p.root.text
@@ -95,7 +95,7 @@ async def send_to_server_agent(client : Client, message : Message):
                             if update.status and update.status.message:
                                 for p in update.status.message.parts:
                                     yield {
-                                        "task": None,
+                                        "task": task,
                                         "update": update,
                                         "final": True,
                                         "text": p.root.text
