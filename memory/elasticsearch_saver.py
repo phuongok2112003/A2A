@@ -17,9 +17,10 @@ from datetime import datetime
 import logging
 
 logger = logging.getLogger(__name__)
+import base64
 
 
-class ElasticsearchCheckpointSaver(BaseCheckpointSaver[int]):
+class ElasticsearchCheckpointSaver(BaseCheckpointSaver[str]):
     """
     Checkpoint Saver sử dụng Elasticsearch làm backend storage.
     
@@ -42,15 +43,6 @@ class ElasticsearchCheckpointSaver(BaseCheckpointSaver[int]):
         self.es = es
         self.index = index
 
-    def _serialize_bytes(self, data: bytes) -> str:
-        """Convert bytes to base64 string for JSON storage"""
-        import base64
-        return base64.b64encode(data).decode('utf-8')
-
-    def _deserialize_bytes(self, data: str) -> bytes:
-        """Convert base64 string back to bytes"""
-        import base64
-        return base64.b64decode(data.encode('utf-8'))
 
     def _extract_configurable(self, config: RunnableConfig) -> dict:
         """
@@ -67,6 +59,17 @@ class ElasticsearchCheckpointSaver(BaseCheckpointSaver[int]):
             return result
         return dict(configurable)
 
+    def _encode(self, data: tuple[str, bytes]) -> dict:
+        return {
+            "type": data[0],
+            "blob": base64.b64encode(data[1]).decode()
+        }
+
+    def _decode(self, data: dict) -> tuple[str, bytes]:
+        return (
+            data["type"],
+            base64.b64decode(data["blob"].encode())
+        )
     def get_tuple(self, config: RunnableConfig) -> CheckpointTuple | None:
         """
         Lấy checkpoint tuple từ Elasticsearch
@@ -121,12 +124,12 @@ class ElasticsearchCheckpointSaver(BaseCheckpointSaver[int]):
     def _doc_to_checkpoint_tuple(self, doc: dict) -> CheckpointTuple:
         """Convert Elasticsearch document to CheckpointTuple"""
         # Deserialize checkpoint data
-        checkpoint_bytes = self._deserialize_bytes(doc["checkpoint"])
-        checkpoint = self.serde.loads(checkpoint_bytes)
-        
+        checkpoint =doc["checkpoint"]
+        checkpoint = self.serde.loads_typed(self._decode(checkpoint))
+      
         # Deserialize metadata
-        metadata_bytes = self._deserialize_bytes(doc["metadata"])
-        metadata = self.serde.loads(metadata_bytes)
+        metadata = doc["metadata"]
+        metadata = self.serde.loads_typed(self._decode(metadata))
         
         # Handle parent_config
         parent_config = None
@@ -235,12 +238,13 @@ class ElasticsearchCheckpointSaver(BaseCheckpointSaver[int]):
             if not thread_id:
                 raise ValueError("thread_id is required in config")
 
+
             # Use checkpoint's ID if available, otherwise generate new one
             checkpoint_id = checkpoint.get("id") if isinstance(checkpoint, dict) else str(checkpoint.get("id", self.get_next_version(None, None)))
             
             # Serialize checkpoint and metadata to bytes first, then to base64
-            checkpoint_bytes = self.serde.dumps(checkpoint)
-            metadata_bytes = self.serde.dumps(metadata)
+            checkpoint = self.serde.dumps_typed(checkpoint)
+            metadata = self.serde.dumps_typed(metadata)
             
             # Get parent checkpoint_id if exists
             parent_checkpoint_id = configurable.get("checkpoint_id")
@@ -249,8 +253,8 @@ class ElasticsearchCheckpointSaver(BaseCheckpointSaver[int]):
                 "thread_id": thread_id,
                 "checkpoint_id": checkpoint_id,
                 "ts": datetime.utcnow().isoformat(),
-                "checkpoint": self._serialize_bytes(checkpoint_bytes),
-                "metadata": self._serialize_bytes(metadata_bytes),
+                "checkpoint":self._encode(checkpoint),
+                "metadata": self._encode(metadata),
                 "parent_config": parent_checkpoint_id
             }
 
@@ -296,14 +300,14 @@ class ElasticsearchCheckpointSaver(BaseCheckpointSaver[int]):
                 return
 
             # Serialize writes to bytes
-            writes_bytes = self.serde.dumps(writes)
+            writes = self.serde.dumps_typed(writes)
 
             doc = {
                 "thread_id": thread_id,
                 "checkpoint_id": checkpoint_id,
                 "task_id": task_id,
                 "task_path": task_path,
-                "writes": self._serialize_bytes(writes_bytes),
+                "writes": self._encode(writes),
                 "ts": datetime.utcnow().isoformat(),
                 "type": "writes"
             }

@@ -21,6 +21,8 @@ from config.logger import log
 import traceback
 from  langchain.messages import SystemMessage
 import base64
+from langgraph.graph.state import CompiledStateGraph
+from langchain.agents.middleware import wrap_model_call, ModelRequest, ModelResponse, AgentMiddleware
 # ===============================
 # System Prompt
 # ===============================
@@ -234,7 +236,7 @@ class AgentCustom:
             args_schema=DispatcherInput # Validate input đầu vào
         )
     
-    def gen_agent(self):
+    def gen_agent(self)-> CompiledStateGraph :
         
         llm_gemini = ChatGoogleGenerativeAI(
             model="models/gemini-2.0-flash",
@@ -254,23 +256,45 @@ class AgentCustom:
         es = Elasticsearch(settings.ELASTICSEARCH_URL)
         
         try:
-            if not  es.indices.exists(index=self.index_elastic):
-                es.indices.create(index=self.index_elastic,
-                                    body={
-                                            "mappings": {
-                                                "properties": {
-                                                    "thread_id":      { "type": "keyword" },
-                                                    "checkpoint_id":  { "type": "keyword" },
-                                                    "ts":             { "type": "date" },
-
-                                                    "config":         { "type": "text", "index": False },
-                                                    "checkpoint":     { "type": "text", "index": False },
-                                                    "metadata":       { "type": "text", "index": False },
-                                                    "channel_versions": { "type": "text", "index": False }
-                                                }
-                                            }
-                                        }
-                                    )
+            if not es.indices.exists(index=self.index_elastic):
+                es.indices.create(
+                    index=self.index_elastic,
+                    body={
+                        "mappings": {
+                            "properties": {
+                                "thread_id": {"type": "keyword"},
+                                "checkpoint_id": {"type": "keyword"},
+                                "ts": {"type": "date"},
+                                "parent_config": {"type": "keyword"},
+                                "type": {"type": "keyword"},
+                                
+                                # Object với nested structure
+                                "checkpoint": {
+                                    "properties": {
+                                        "type": {"type": "keyword"},
+                                        "blob": {"type": "text", "index": False}
+                                    }
+                                },
+                                "metadata": {
+                                    "properties": {
+                                        "type": {"type": "keyword"},
+                                        "blob": {"type": "text", "index": False}
+                                    }
+                                },
+                                "writes": {
+                                    "properties": {
+                                        "type": {"type": "keyword"},
+                                        "blob": {"type": "text", "index": False}
+                                    }
+                                },
+                                
+                                # Các trường cho put_writes
+                                "task_id": {"type": "keyword"},
+                                "task_path": {"type": "keyword"}
+                            }
+                        }
+                    }
+                )
 
         except Exception as e:
             raise ValueError(f"Elasticsearch connection error: {e}")
