@@ -19,10 +19,12 @@ import os
 from a2a.types import FileWithBytes
 from config.logger import log
 import traceback
-from  langchain.messages import SystemMessage
 import base64
 from langgraph.graph.state import CompiledStateGraph
-from langchain.agents.middleware import wrap_model_call, ModelRequest, ModelResponse, AgentMiddleware
+from langchain.agents.middleware import (SummarizationMiddleware, HumanInTheLoopMiddleware, ModelCallLimitMiddleware, ToolCallLimitMiddleware,
+                                         PIIMiddleware, TodoListMiddleware, LLMToolSelectorMiddleware, ShellToolMiddleware)
+from middleware_custom import MiddlewareCustom
+from until.check_os_name import build_shell_middleware
 # ===============================
 # System Prompt
 # ===============================
@@ -49,12 +51,13 @@ class DispatcherInput(BaseModel):
 
 
 class AgentCustom:
-    def __init__(self, tools=None, system_prompt : str = SYSTEM_PROMPT, index_elastic: str = "langgraph_checkpoints"):
+    def __init__(self, tools=None, system_prompt : str = SYSTEM_PROMPT, index_elastic: str = "langgraph_checkpoints", max_tokens_before_summary: int = 2000):
         self.system_prompt = system_prompt
         self.index_elastic = index_elastic
         self.tools = tools if tools else []
         self.agent_registry = {}
         self.agent = None
+        self.max_tokens_before_summary = max_tokens_before_summary
     @classmethod
     async def create(cls, access_agent_urls: List[str] = [], **kwargs):
         self = cls(**kwargs)
@@ -244,10 +247,10 @@ class AgentCustom:
             google_api_key=settings.GOOGLE_A2A_API_KEY,
         )
         llm_openai = ChatOpenAI(
-            model_name="deepseek-r1:latest",
+            model_name="gpt-oss:latest",
             temperature=0.2,
             openai_api_key=settings.OPENAI_A2A_API_KEY,
-            openai_api_base="http://100.122.222.112:11434/api/generate",
+            openai_api_base="http://localhost:11434/v1",
         )
 
 
@@ -308,12 +311,28 @@ class AgentCustom:
         )   
 
         agent = create_agent(
-            model=llm_gemini,
+            model=llm_openai,
             tools=self.tools,
             system_prompt=self.system_prompt,
             checkpointer=checkpointer,
             name="gemini-agent",
-            debug=True,
+            debug=False,
+            # middleware=[SummarizationMiddleware(max_tokens_before_summary=self.max_tokens_before_summary, model=llm_gemini), 
+            #             ModelCallLimitMiddleware(run_limit= 5, thread_limit= 100, exit_behavior="error"),
+            #             ToolCallLimitMiddleware(run_limit=10, thread_limit= 10, exit_behavior= "error"),
+            #             PIIMiddleware("email", strategy="redact", apply_to_input=True, apply_to_output=True, apply_to_tool_results=True),
+            #             PIIMiddleware("credit_card", strategy="block"),
+            #             PIIMiddleware("ip", strategy="hash"),
+            #             # PIIMiddleware("url", strategy="redact", apply_to_output=True),
+            #             TodoListMiddleware(),
+            #             # LLMToolSelectorMiddleware(model = llm_gemini, max_tools=5, always_include=["call_external_agent"]),
+            #             # build_shell_middleware(),
+            #             # HumanInTheLoopMiddleware(
+            #             #     interrupt_on={
+            #             #          "shell": True,
+            #             #     }
+            #             # ),
+            #             ]
         )
      
 

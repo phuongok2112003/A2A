@@ -1,8 +1,3 @@
-"""
-Elasticsearch Checkpoint Saver for LangGraph
-Lưu trữ checkpoint của LangGraph agent vào Elasticsearch
-"""
-
 from typing import Any, AsyncIterator, Iterator, Optional, Sequence
 from elasticsearch import Elasticsearch
 from langgraph.checkpoint.base import (
@@ -15,6 +10,7 @@ from langgraph.checkpoint.base import (
 from langchain_core.runnables import RunnableConfig
 from datetime import datetime
 import logging
+from until.convert import convert_deque
 
 logger = logging.getLogger(__name__)
 import base64
@@ -103,11 +99,17 @@ class ElasticsearchCheckpointSaver(BaseCheckpointSaver[str]):
             # Nếu không có checkpoint_id, lấy checkpoint mới nhất
             query = {
                 "query": {
-                    "term": {"thread_id": thread_id}
+                    "bool": {
+                        "must": [
+                            {"term": {"thread_id": thread_id}},
+                            {"term": {"type": "checkpoint"}}   # <<< FIX QUAN TRỌNG
+                        ]
+                    }
                 },
                 "sort": [{"ts": {"order": "desc"}}],
                 "size": 1
             }
+
 
             result = self.es.search(index=self.index, body=query)
             
@@ -255,7 +257,8 @@ class ElasticsearchCheckpointSaver(BaseCheckpointSaver[str]):
                 "ts": datetime.utcnow().isoformat(),
                 "checkpoint":self._encode(checkpoint),
                 "metadata": self._encode(metadata),
-                "parent_config": parent_checkpoint_id
+                "parent_config": parent_checkpoint_id,
+                "type": "checkpoint",  
             }
 
             doc_id = f"{thread_id}::{checkpoint_id}"
@@ -274,6 +277,70 @@ class ElasticsearchCheckpointSaver(BaseCheckpointSaver[str]):
             logger.error(f"Error putting checkpoint: {e}", exc_info=True)
             raise
 
+    def _sanitize_writes(self, writes: Sequence[tuple[str, Any]]) -> list:
+        """
+        Làm sạch writes để loại bỏ các object không serialize được
+        
+        Loại bỏ:
+        - httpx clients (_SessionResources)
+        - Database connections
+        - File handles
+        - Các object phức tạp khác
+        """
+        sanitized = []
+        
+        for channel, value in writes:
+            try:
+                # Kiểm tra nếu value chứa các object không serialize được
+                if self._is_serializable(value):
+                    sanitized.append((channel, value))
+                else:
+                    # Log warning nhưng không raise error
+                    logger.warning(
+                        f"Skipping non-serializable write on channel '{channel}': "
+                        f"{type(value).__name__}"
+                    )
+                    # Có thể lưu placeholder thay vì bỏ qua
+                    sanitized.append((channel, {"__skipped__": type(value).__name__}))
+            except Exception as e:
+                logger.warning(f"Error checking serializability for channel '{channel}': {e}")
+                sanitized.append((channel, {"__error__": str(e)}))
+        
+        return sanitized
+    
+    def _is_serializable(self, obj: Any) -> bool:
+        """
+        Kiểm tra xem object có serialize được không
+        """
+        # Danh sách các type không serialize được
+        non_serializable_types = (
+            'httpx',
+            'Session', 
+            '_SessionResources',
+            'Connection',
+            'Socket',
+            'Lock',
+            'Thread',
+        )
+        
+        obj_type = type(obj).__name__
+        obj_module = type(obj).__module__
+        
+        # Kiểm tra type name
+        if any(ns in obj_type for ns in non_serializable_types):
+            return False
+            
+        # Kiểm tra module (httpx, asyncio, threading, etc.)
+        if any(ns in obj_module for ns in ['httpx', 'asyncio', 'threading', 'socket']):
+            return False
+        
+        # Nếu là dict hoặc list, kiểm tra đệ quy
+        if isinstance(obj, dict):
+            return all(self._is_serializable(v) for v in obj.values())
+        elif isinstance(obj, (list, tuple)):
+            return all(self._is_serializable(item) for item in obj)
+        
+        return True
     def put_writes(
         self,
         config: RunnableConfig,
@@ -300,14 +367,25 @@ class ElasticsearchCheckpointSaver(BaseCheckpointSaver[str]):
                 return
 
             # Serialize writes to bytes
-            writes = self.serde.dumps_typed(writes)
+            sanitized_writes = self._sanitize_writes(writes)
+            
+            # Convert deque và serialize
+            sanitized_writes = convert_deque(sanitized_writes)
+            
+            try:
+                writes_serialized = self.serde.dumps_typed(sanitized_writes)
+            except Exception as e:
+                logger.error(f"Failed to serialize writes even after sanitization: {e}")
+                # Fallback: lưu error message thay vì crash
+                error_writes = [("__serialization_error__", str(e))]
+                writes_serialized = self.serde.dumps_typed(error_writes)
 
             doc = {
                 "thread_id": thread_id,
                 "checkpoint_id": checkpoint_id,
                 "task_id": task_id,
                 "task_path": task_path,
-                "writes": self._encode(writes),
+                "writes": self._encode(writes_serialized),
                 "ts": datetime.utcnow().isoformat(),
                 "type": "writes"
             }

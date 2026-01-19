@@ -1,5 +1,6 @@
-from collections import ChainMap
-
+from langchain.agents.middleware.shell_tool import _SessionResources
+from collections import ChainMap, deque
+from typing import Any
 def normalize(obj):
     if isinstance(obj, ChainMap):
         # Merge all layers into one dict
@@ -29,3 +30,45 @@ def extract_persistable_config(config):
     }
 
     return cfg
+
+
+
+def convert_deque(obj: Any) -> Any:
+    """
+    Recursively convert deque to list and handle other non-serializable types
+    """
+    if isinstance(obj, deque):
+        return list(obj)
+    elif isinstance(obj, dict):
+        return {k: convert_deque(v) for k, v in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return [convert_deque(item) for item in obj]
+    elif isinstance(obj, set):
+        return list(obj)
+    else:
+        return obj
+
+
+def is_safe_to_serialize(obj: Any) -> bool:
+    """
+    Check if object is safe to serialize
+    """
+    unsafe_types = (
+        'httpx',
+        'Session',
+        '_SessionResources',
+        'Connection',
+        'Socket',
+        'Lock',
+        'Thread',
+        'Database',
+        'Engine',
+    )
+    
+    obj_type = type(obj).__name__
+    obj_module = type(obj).__module__
+    
+    return not any(
+        unsafe in obj_type or unsafe in obj_module
+        for unsafe in unsafe_types
+    )
