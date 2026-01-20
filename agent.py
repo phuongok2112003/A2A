@@ -316,23 +316,23 @@ class AgentCustom:
             system_prompt=self.system_prompt,
             checkpointer=checkpointer,
             name="gemini-agent",
-            debug=False,
-            # middleware=[SummarizationMiddleware(max_tokens_before_summary=self.max_tokens_before_summary, model=llm_gemini), 
-            #             ModelCallLimitMiddleware(run_limit= 5, thread_limit= 100, exit_behavior="error"),
-            #             ToolCallLimitMiddleware(run_limit=10, thread_limit= 10, exit_behavior= "error"),
-            #             PIIMiddleware("email", strategy="redact", apply_to_input=True, apply_to_output=True, apply_to_tool_results=True),
-            #             PIIMiddleware("credit_card", strategy="block"),
-            #             PIIMiddleware("ip", strategy="hash"),
-            #             # PIIMiddleware("url", strategy="redact", apply_to_output=True),
-            #             TodoListMiddleware(),
-            #             # LLMToolSelectorMiddleware(model = llm_gemini, max_tools=5, always_include=["call_external_agent"]),
-            #             # build_shell_middleware(),
-            #             # HumanInTheLoopMiddleware(
-            #             #     interrupt_on={
-            #             #          "shell": True,
-            #             #     }
-            #             # ),
-            #             ]
+            debug=True,
+            middleware=[SummarizationMiddleware(max_tokens_before_summary=self.max_tokens_before_summary, model=llm_gemini), 
+                        ModelCallLimitMiddleware(run_limit= 5, thread_limit= 100, exit_behavior="error"),
+                        ToolCallLimitMiddleware(run_limit=10, thread_limit= 10, exit_behavior= "error"),
+                        PIIMiddleware("email", strategy="redact", apply_to_input=True, apply_to_output=True, apply_to_tool_results=True),
+                        PIIMiddleware("credit_card", strategy="block"),
+                        PIIMiddleware("ip", strategy="hash"),
+                        # PIIMiddleware("url", strategy="redact", apply_to_output=True),
+                        TodoListMiddleware(),
+                        # LLMToolSelectorMiddleware(model = llm_gemini, max_tools=5, always_include=["call_external_agent"]),
+                        build_shell_middleware(),
+                        # HumanInTheLoopMiddleware(
+                        #     interrupt_on={
+                        #          "shell": True,
+                        #     }
+                        # ),
+                        ]
         )
      
 

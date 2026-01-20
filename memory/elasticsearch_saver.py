@@ -14,8 +14,18 @@ from until.convert import convert_deque
 
 logger = logging.getLogger(__name__)
 import base64
+from langgraph.types import Send
 
-
+def _sanitize_checkpoint(obj):
+    """Chuyển đổi đối tượng Send thành dict để msgpack có thể lưu được"""
+    if isinstance(obj, Send):
+        # Chuyển Send thành dictionary
+        return {"__type__": "Send", "node": obj.node, "arg": obj.arg}
+    if isinstance(obj, list):
+        return [_sanitize_checkpoint(item) for item in obj]
+    if isinstance(obj, dict):
+        return {k: _sanitize_checkpoint(v) for k, v in obj.items()}
+    return obj
 class ElasticsearchCheckpointSaver(BaseCheckpointSaver[str]):
     """
     Checkpoint Saver sử dụng Elasticsearch làm backend storage.
@@ -66,6 +76,7 @@ class ElasticsearchCheckpointSaver(BaseCheckpointSaver[str]):
             data["type"],
             base64.b64decode(data["blob"].encode())
         )
+
     def get_tuple(self, config: RunnableConfig) -> CheckpointTuple | None:
         """
         Lấy checkpoint tuple từ Elasticsearch
@@ -245,6 +256,7 @@ class ElasticsearchCheckpointSaver(BaseCheckpointSaver[str]):
             checkpoint_id = checkpoint.get("id") if isinstance(checkpoint, dict) else str(checkpoint.get("id", self.get_next_version(None, None)))
             
             # Serialize checkpoint and metadata to bytes first, then to base64
+            checkpoint = _sanitize_checkpoint(checkpoint)
             checkpoint = self.serde.dumps_typed(checkpoint)
             metadata = self.serde.dumps_typed(metadata)
             

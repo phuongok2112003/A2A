@@ -1,12 +1,14 @@
 import platform
 from langchain.agents.middleware import ShellToolMiddleware
-
+import os
 def build_shell_middleware()->ShellToolMiddleware:
     os_name = platform.system().lower()
+    current_working_dir = os.getcwd() 
 
     if "windows" in os_name:
         return ShellToolMiddleware(
             shell_command=("powershell", "-NoLogo"),
+            workspace_root=current_working_dir,
             tool_description = (
                 "Execute PowerShell commands in a persistent Windows shell session. "
                 "Supports developer commands such as git clone, git pull, pip, python, dir, Get-Content, Remove-Item, etc. "
@@ -17,6 +19,7 @@ def build_shell_middleware()->ShellToolMiddleware:
     else:  # Linux / Mac
         return ShellToolMiddleware(
             shell_command=("/bin/bash",),
+            workspace_root=current_working_dir,
             tool_description = (
             "Execute PowerShell commands in a persistent Windows shell session. "
             "Supports developer commands such as git clone, git pull, pip, python, dir, Get-Content, Remove-Item, etc. "
