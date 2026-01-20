@@ -1,9 +1,10 @@
 import platform
-from langchain.agents.middleware import ShellToolMiddleware
+from langchain.agents.middleware import ShellToolMiddleware, HostExecutionPolicy
 import os
 def build_shell_middleware()->ShellToolMiddleware:
     os_name = platform.system().lower()
     current_working_dir = os.getcwd() 
+    print(f"\n\n\n\n===================working dir {current_working_dir} oss name P{os_name}\n\n\n")
 
     if "windows" in os_name:
         return ShellToolMiddleware(

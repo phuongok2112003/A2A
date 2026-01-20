@@ -25,9 +25,16 @@ from langchain.agents.middleware import (SummarizationMiddleware, HumanInTheLoop
                                          PIIMiddleware, TodoListMiddleware, LLMToolSelectorMiddleware, ShellToolMiddleware)
 from middleware_custom import MiddlewareCustom
 from until.check_os_name import build_shell_middleware
+from langgraph.types import Command  
+from langchain.agents.middleware.human_in_the_loop import HITLRequest, Decision
+
 # ===============================
 # System Prompt
 # ===============================
+import asyncio
+
+async def async_input(prompt: str) -> str:
+    return await asyncio.to_thread(input, prompt)
 
 SYSTEM_PROMPT = """
 Bạn là một trợ lý hữu ích và thông minh.
@@ -51,13 +58,14 @@ class DispatcherInput(BaseModel):
 
 
 class AgentCustom:
-    def __init__(self, tools=None, system_prompt : str = SYSTEM_PROMPT, index_elastic: str = "langgraph_checkpoints", max_tokens_before_summary: int = 2000):
+    def __init__(self, tools=None, system_prompt : str = SYSTEM_PROMPT, index_elastic: str = "langgraph_checkpoints", max_tokens_before_summary: int = 2000, recursion_limit: int =100):
         self.system_prompt = system_prompt
         self.index_elastic = index_elastic
         self.tools = tools if tools else []
         self.agent_registry = {}
-        self.agent = None
+        self.agent : CompiledStateGraph = None
         self.max_tokens_before_summary = max_tokens_before_summary
+        self.recursion_limit = recursion_limit
     @classmethod
     async def create(cls, access_agent_urls: List[str] = [], **kwargs):
         self = cls(**kwargs)
@@ -98,6 +106,7 @@ class AgentCustom:
                     self.agent_registry[private_name] = {
                         "card": private_card,
                         "client": client,
+                        "httpx_client":httpx_client,
                         "url": private_card.url,
                         "scope": "private",
                     }
@@ -108,6 +117,7 @@ class AgentCustom:
                 self.agent_registry[public_name] = {
                         "card": public_card,
                         "client": client,
+                        "httpx_client":httpx_client,
                         "url": public_card.url,
                         "scope": "public",
                     }
@@ -123,7 +133,6 @@ class AgentCustom:
         """
         
         
-
         agents_desc_str = "\n\n".join(
                 f"""Agent Name: {name}
             Description: {card.description}
@@ -302,36 +311,37 @@ class AgentCustom:
         except Exception as e:
             raise ValueError(f"Elasticsearch connection error: {e}")
 
-        # # Memory cho mỗi thread (mỗi context_id)
-        # checkpointer = MemorySaver()
+        # Memory cho mỗi thread (mỗi context_id)
+        checkpointer = MemorySaver()
 
-        checkpointer = ElasticsearchCheckpointSaver(
-            es=es,
-            index=self.index_elastic
-        )   
+        # checkpointer = ElasticsearchCheckpointSaver(
+        #     es=es,
+        #     index=self.index_elastic
+        # )   
 
         agent = create_agent(
-            model=llm_openai,
+            model=llm_gemini,
             tools=self.tools,
             system_prompt=self.system_prompt,
             checkpointer=checkpointer,
+            # store=
             name="gemini-agent",
             debug=True,
             middleware=[SummarizationMiddleware(max_tokens_before_summary=self.max_tokens_before_summary, model=llm_gemini), 
-                        ModelCallLimitMiddleware(run_limit= 5, thread_limit= 100, exit_behavior="error"),
-                        ToolCallLimitMiddleware(run_limit=10, thread_limit= 10, exit_behavior= "error"),
+                        ModelCallLimitMiddleware(run_limit= 5, thread_limit= 100, exit_behavior="end"),
+                        ToolCallLimitMiddleware(run_limit=10, thread_limit= 10, exit_behavior= "end"),
                         PIIMiddleware("email", strategy="redact", apply_to_input=True, apply_to_output=True, apply_to_tool_results=True),
                         PIIMiddleware("credit_card", strategy="block"),
                         PIIMiddleware("ip", strategy="hash"),
                         # PIIMiddleware("url", strategy="redact", apply_to_output=True),
                         TodoListMiddleware(),
+                        # build_shell_middleware(),
+                        HumanInTheLoopMiddleware(
+                            interrupt_on={
+                                 "run_shell": True,
+                            }
+                        ),
                         # LLMToolSelectorMiddleware(model = llm_gemini, max_tools=5, always_include=["call_external_agent"]),
-                        build_shell_middleware(),
-                        # HumanInTheLoopMiddleware(
-                        #     interrupt_on={
-                        #          "shell": True,
-                        #     }
-                        # ),
                         ]
         )
      
@@ -343,7 +353,12 @@ class AgentCustom:
         context_id = conversation_id
         """
         try:
-        
+            config = {
+                "configurable": {
+                    "thread_id": context_id,
+                },
+                "recursion_limit": self.recursion_limit,
+            }
 
             result = await self.agent.ainvoke(
                 {
@@ -351,11 +366,7 @@ class AgentCustom:
                         HumanMessage(content=user_input)
                     ]
                 },
-                config={
-                    "configurable": {
-                        "thread_id": context_id   # LangGraph memory key
-                    }
-                }
+                config=config
             )
 
             # result["messages"] là toàn bộ lịch sử
@@ -363,3 +374,59 @@ class AgentCustom:
         except Exception as e:
             log.error(f"Lỗi khi chạy agent: {e}  {traceback.format_exc()}")
             return f"Lỗi khi chạy agent: {e}"
+    
+    async def run_astream(self, user_input: str, context_id: str):
+        try:
+            config = {
+                "configurable": {
+                    "thread_id": context_id,
+                },
+                "recursion_limit": self.recursion_limit,
+            }
+
+            async for event in self.agent.astream(
+            {
+                "messages": [
+                    HumanMessage(content=user_input)
+                ]
+            },
+            config=config,
+            stream_mode=["values", "updates", "messages"],
+            ):
+                mode, payload = event
+                print(f"+++++++++++++++++++++++++++++++++++++++{event}++++++++++++++++++++++++++++++++++++++++")
+                
+                if mode == "updates" and "__interrupt__" in payload:
+                            interrupt = payload["__interrupt__"][0]
+
+                            print("\n TOOL REQUIRES APPROVAL")
+                            for req in interrupt.value["action_requests"]:
+                                print(req["description"])
+
+                            decision = await async_input(
+                                "Decision (approve / reject / edit): "
+                            )
+                            print(f"Lua chon cua minh la {decision}")
+                            
+                            decision_type = decision  # "approve" | "reject" | "edit"
+
+                            resume_payload = {
+                                "decisions": [
+                                    {
+                                        "type": decision_type
+                                    }
+                                ]
+                            }
+                            # Resume đúng schema
+                            async for resumed_event in self.agent.astream(
+                                Command(
+                                     resume= resume_payload,
+                                    ),
+                                config=config,
+                            ):
+                                print(f"=================resumed_event: {resumed_event}============================")
+
+            
+        except Exception as e:
+            log.error(f"Lỗi khi chạy agent: {e}  {traceback.format_exc()}")
+            yield f"Lỗi khi chạy agent: {e}"
