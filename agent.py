@@ -31,6 +31,7 @@ from a2a.server.tasks import TaskUpdater
 from a2a.types import TaskState
 from a2a.utils import new_agent_text_message, new_task
 from schemas.base import ServerAgentRequest
+from until.convert import dict_to_string
 # ===============================
 # System Prompt
 # ===============================
@@ -330,14 +331,14 @@ class AgentCustom:
         )   
 
         agent = create_agent(
-            model=llm_gemini,
+            model=llm_openai,
             tools=self.tools,
             system_prompt=self.system_prompt,
             checkpointer=checkpointer,
             # store=
             name="gemini-agent",
             debug=True,
-            middleware=[SummarizationMiddleware(max_tokens_before_summary=self.max_tokens_before_summary, model=llm_gemini), 
+            middleware=[SummarizationMiddleware(max_tokens_before_summary=self.max_tokens_before_summary, model=llm_openai), 
                         ModelCallLimitMiddleware(run_limit= 5, thread_limit= 100, exit_behavior="end"),
                         ToolCallLimitMiddleware(run_limit=10, thread_limit= 10, exit_behavior= "end"),
                         PIIMiddleware("email", strategy="redact", apply_to_input=True, apply_to_output=True, apply_to_tool_results=True),

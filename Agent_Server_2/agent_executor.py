@@ -59,7 +59,7 @@ class CurrencyAgentExecutor(BaseAgentExecutor):
                 print("[INFO] Creating initial task from message")
                 task = new_task(context.message)
 
-            print("[INFO] Enqueuing initial Task ")
+            print(f"[INFO] Enqueuing initial Task {context.message}")
             await event_queue.enqueue_event(task)
             updater = TaskUpdater(event_queue = event_queue,task_id = task.id,context_id = task.context_id)
 
@@ -70,18 +70,18 @@ class CurrencyAgentExecutor(BaseAgentExecutor):
             )
             
             request_agent = ServerAgentRequest(context_id=task.context_id, task_id= task.id,
-                                               input_payload=InputPayload(**string_to_dict(context.message)))
+                                               input_payload=InputPayload(data=context.message, type=context.message.parts[0].root.kind))
 
             result_text = await self.run_astream_in_agent_server(client=updater,server_agent=request_agent)
             print(f"[INFO] Conversion result: {result_text}")
-            await updater.update_status(
-                state="completed",
-                message=new_agent_text_message(result_text,task.context_id, task.id)
-            )
+            # await updater.update_status(
+            #     state="completed",
+            #     message=new_agent_text_message(result_text,task.context_id, task.id)
+            # )
 
 
-            # await updater.complete()
-            await event_queue.close()
+            # # await updater.complete()
+            # await event_queue.close()
 
             print("[INFO] Task completed successfully")
 
