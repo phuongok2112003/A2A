@@ -10,7 +10,8 @@ async def main():
     context_id = "fresh_conversation_001"  # Sử dụng một context_id cố định cho ví dụ này
     agent = await AgentCustom.create(
             access_agent_urls=access_agent_urls,
-            tools=tools
+            tools=tools,
+            interrupt_on_tool=tools
         )
     
     agent.get_info_tool()
@@ -22,11 +23,11 @@ async def main():
     # async for res in agent.run_astream(user_input=user_input, context_id=context_id):
     #    print(res)
 
-    async for _ in agent.run_astream(
+    async for res in agent.run_astream(
         user_input=user_input,
         context_id=context_id
     ):
-        pass
+        print(res)
 
 if __name__ == "__main__":
     import asyncio

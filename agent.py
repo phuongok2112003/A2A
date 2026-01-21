@@ -2,7 +2,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from langchain.agents import create_agent
 from langchain_core.tools import tool
-from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from langgraph.checkpoint.memory import MemorySaver
 from config.settings import settings
 from memory.elasticsearch_saver import ElasticsearchCheckpointSaver
@@ -27,7 +27,10 @@ from middleware_custom import MiddlewareCustom
 from until.check_os_name import build_shell_middleware
 from langgraph.types import Command  
 from langchain.agents.middleware.human_in_the_loop import HITLRequest, Decision
-
+from a2a.server.tasks import TaskUpdater
+from a2a.types import TaskState
+from a2a.utils import new_agent_text_message, new_task
+from schemas.base import ServerAgentRequest
 # ===============================
 # System Prompt
 # ===============================
@@ -58,7 +61,8 @@ class DispatcherInput(BaseModel):
 
 
 class AgentCustom:
-    def __init__(self, tools=None, system_prompt : str = SYSTEM_PROMPT, index_elastic: str = "langgraph_checkpoints", max_tokens_before_summary: int = 2000, recursion_limit: int =100):
+    def __init__(self, tools=None, system_prompt : str = SYSTEM_PROMPT, index_elastic: str = "langgraph_checkpoints", max_tokens_before_summary: int = 2000, 
+                 recursion_limit: int =100, interrupt_on_tool = None):
         self.system_prompt = system_prompt
         self.index_elastic = index_elastic
         self.tools = tools if tools else []
@@ -66,6 +70,12 @@ class AgentCustom:
         self.agent : CompiledStateGraph = None
         self.max_tokens_before_summary = max_tokens_before_summary
         self.recursion_limit = recursion_limit
+        self.interrupt_on_tool = {}
+        if interrupt_on_tool:
+             self.interrupt_on_tool={
+                 f"{tool.to_json()['name']}": True for tool in interrupt_on_tool
+             }
+
     @classmethod
     async def create(cls, access_agent_urls: List[str] = [], **kwargs):
         self = cls(**kwargs)
@@ -222,7 +232,7 @@ class AgentCustom:
                     
                     if chunk_text:
  
-                        print("====Chunk Text",chunk_text, end="\n\n", flush=True)
+                        print("====Chunk Text====\n",chunk_text, end="\n\n", flush=True)
                         if chunk_text.get("final") == True:
                             final_result = chunk_text.get("text")
                             break
@@ -312,12 +322,12 @@ class AgentCustom:
             raise ValueError(f"Elasticsearch connection error: {e}")
 
         # Memory cho mỗi thread (mỗi context_id)
-        checkpointer = MemorySaver()
+        # checkpointer = MemorySaver()
 
-        # checkpointer = ElasticsearchCheckpointSaver(
-        #     es=es,
-        #     index=self.index_elastic
-        # )   
+        checkpointer = ElasticsearchCheckpointSaver(
+            es=es,
+            index=self.index_elastic
+        )   
 
         agent = create_agent(
             model=llm_gemini,
@@ -337,9 +347,7 @@ class AgentCustom:
                         TodoListMiddleware(),
                         # build_shell_middleware(),
                         HumanInTheLoopMiddleware(
-                            interrupt_on={
-                                 "run_shell": True,
-                            }
+                            interrupt_on=self.interrupt_on_tool
                         ),
                         # LLMToolSelectorMiddleware(model = llm_gemini, max_tools=5, always_include=["call_external_agent"]),
                         ]
@@ -375,58 +383,78 @@ class AgentCustom:
             log.error(f"Lỗi khi chạy agent: {e}  {traceback.format_exc()}")
             return f"Lỗi khi chạy agent: {e}"
     
+
     async def run_astream(self, user_input: str, context_id: str):
-        try:
-            config = {
-                "configurable": {
-                    "thread_id": context_id,
-                },
-                "recursion_limit": self.recursion_limit,
-            }
+        config = {
+            "configurable": {"thread_id": context_id},
+            "recursion_limit": self.recursion_limit,
+        }
 
-            async for event in self.agent.astream(
-            {
-                "messages": [
-                    HumanMessage(content=user_input)
-                ]
-            },
-            config=config,
-            stream_mode=["values", "updates", "messages"],
+        input_payload = {"messages": [HumanMessage(content=user_input)]}
+        final_state = None
+
+        while True:
+            interrupted = False
+
+            async for mode, payload in self.agent.astream(
+                input_payload,
+                config=config,
+                stream_mode=["values", "updates", "messages"],
             ):
-                mode, payload = event
-                print(f"+++++++++++++++++++++++++++++++++++++++{event}++++++++++++++++++++++++++++++++++++++++")
-                
-                if mode == "updates" and "__interrupt__" in payload:
-                            interrupt = payload["__interrupt__"][0]
+                # giữ state cuối
+                if mode == "values":
+                    final_state = payload
 
-                            print("\n TOOL REQUIRES APPROVAL")
-                            for req in interrupt.value["action_requests"]:
-                                print(req["description"])
+                # ===== INTERRUPT =====
+                if "__interrupt__" in payload:
+                    interrupted = True
+                    interrupt_event = payload["__interrupt__"][0]
+                    hitl_request = interrupt_event.value
 
-                            decision = await async_input(
-                                "Decision (approve / reject / edit): "
-                            )
-                            print(f"Lua chon cua minh la {decision}")
-                            
-                            decision_type = decision  # "approve" | "reject" | "edit"
+                    action_requests = hitl_request["action_requests"]
+ 
+                    decisions = []
+                    # print(f"=====================dfdfd============d============{req.to_string() for }++++++++++++++++++++++++++++++++++++++++")
+                    for req in action_requests:
+                        
+                        decision = (await async_input(
+                            "Decision (approve / reject / edit): "
+                        )).strip().lower()
 
-                            resume_payload = {
-                                "decisions": [
-                                    {
-                                        "type": decision_type
-                                    }
-                                ]
-                            }
-                            # Resume đúng schema
-                            async for resumed_event in self.agent.astream(
-                                Command(
-                                     resume= resume_payload,
-                                    ),
-                                config=config,
-                            ):
-                                print(f"=================resumed_event: {resumed_event}============================")
+                        if decision == "approve":
+                            decisions.append({"type": "approve"})
 
-            
-        except Exception as e:
-            log.error(f"Lỗi khi chạy agent: {e}  {traceback.format_exc()}")
-            yield f"Lỗi khi chạy agent: {e}"
+                        elif decision == "reject":
+                            message = await async_input("Reject reason: ")
+                            decisions.append({
+                                "type": "reject",
+                                "message": message
+                            })
+
+                        elif decision == "edit":
+                            new_args = {}
+                            for k, v in req["args"].items():
+                                new_args[k] = await async_input(
+                                    f"{k} (default={v}): "
+                                )
+
+                            decisions.append({
+                                "type": "edit",
+                                "edited_action": {
+                                    "name": req["name"],
+                                    "args": new_args
+                                }
+                            })
+                    
+                    input_payload = Command(resume={"decisions": decisions})
+                    break  
+
+            if not interrupted:
+                break
+
+        # ===== FINAL ANSWER =====
+        if final_state:
+            for msg in reversed(final_state["messages"]):
+                if isinstance(msg, AIMessage):
+                    yield msg.content
+                    return

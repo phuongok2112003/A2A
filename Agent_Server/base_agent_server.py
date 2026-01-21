@@ -9,7 +9,7 @@ from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore
 from a2a.server.agent_execution import AgentExecutor
 from .agent_executor import BaseAgentExecutor
-from schemas.agent_server import AgentServer
+from schemas.base import AgentServer
 class BaseAgentServer(ABC):
 
     def __init__(self, agent_server_schema: Optional[AgentServer] = None):

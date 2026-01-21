@@ -21,6 +21,8 @@ from .tools import tools
 from typing import List
 from Agent_Server.agent_executor import BaseAgentExecutor
 from typing import Callable
+from schemas.base import ServerAgentRequest,InputPayload
+from until.convert import string_to_dict
 class CurrencyAgentExecutor(BaseAgentExecutor):
     """
     Currency conversion agent using A2A task-based streaming.
@@ -28,8 +30,8 @@ class CurrencyAgentExecutor(BaseAgentExecutor):
     - All messages wrapped in TaskStatus.message (Message object).
     - Fixed: Added required 'final' field to TaskStatusUpdateEvent.
     """
-    def __init__(self,access_agent_urls: List[str] = [], tools: List = [Callable]):
-        super().__init__(access_agent_urls=access_agent_urls, tools=tools)
+    def __init__(self,access_agent_urls: List[str] = [], tools: List = [Callable], interrupt_on_tool: List = [Callable]):
+        super().__init__(access_agent_urls=access_agent_urls, tools=tools, interrupt_on_tool=interrupt_on_tool)
        
     def _create_status(self, state: str, text: str) -> TaskStatus:
         """Helper to create TaskStatus with correct Message object."""
@@ -66,10 +68,11 @@ class CurrencyAgentExecutor(BaseAgentExecutor):
                 state="working",
                 message=new_agent_text_message("Processing currency conversion...",task.context_id, task.id)
             )
-
-
             
-            result_text = await self.agent.run(user_input=context.get_user_input(), context_id=context.context_id)
+            request_agent = ServerAgentRequest(context_id=task.context_id, task_id= task.id,
+                                               input_payload=InputPayload(**string_to_dict(context.message)))
+
+            result_text = await self.run_astream_in_agent_server(client=updater,server_agent=request_agent)
             print(f"[INFO] Conversion result: {result_text}")
             await updater.update_status(
                 state="completed",

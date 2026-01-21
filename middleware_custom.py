@@ -388,16 +388,3 @@ class MiddlewareCustom(AgentMiddleware):
         if self.enable_logging:
             logger.info(f"[{self.name}] {message}")
     
-    def get_stats(self) -> Dict[str, Any]:
-        """Lấy thống kê"""
-        return self.stats.copy()
-    
-    def reset_stats(self):
-        """Reset thống kê"""
-        self.stats = {
-            "agent_runs": 0,
-            "model_calls": 0,
-            "tool_calls": 0,
-            "total_time": 0.0
-        }
-

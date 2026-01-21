@@ -33,7 +33,7 @@ class Agent_Server_2(BaseAgentServer):
         )
 
     async def create_executor(self):
-        executor = CurrencyAgentExecutor(tools=tools)
+        executor = CurrencyAgentExecutor(tools=tools,interrupt_on_tool=tools)
         return executor
     
 server_agent_2 = Agent_Server_2(agent_server_schema=agent_server_2_schema)

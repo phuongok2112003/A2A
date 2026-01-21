@@ -1,8 +1,9 @@
 import subprocess
 from langchain_core.tools import tool
+from schemas.base import RunShellArgs
 
 
-@tool
+@tool(args_schema=RunShellArgs)
 def run_shell(command: str, timeout: int = 30) -> str:
     """
     Execute a shell command and return stdout/stderr.

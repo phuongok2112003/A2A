@@ -1,7 +1,7 @@
 from a2a.types import AgentSkill
 from typing import List
 from pydantic import BaseModel
-from schemas.agent_server import AgentServer
+from schemas.base import AgentServer
 
 travel_skill = AgentSkill(
     id="travel_recommendation",

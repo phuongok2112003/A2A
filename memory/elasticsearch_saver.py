@@ -256,7 +256,7 @@ class ElasticsearchCheckpointSaver(BaseCheckpointSaver[str]):
             checkpoint_id = checkpoint.get("id") if isinstance(checkpoint, dict) else str(checkpoint.get("id", self.get_next_version(None, None)))
             
             # Serialize checkpoint and metadata to bytes first, then to base64
-            print(f"\n\n============================={checkpoint}+++++++++++++++++++++++++++++++\n\n")
+            # print(f"\n\n============================={checkpoint}+++++++++++++++++++++++++++++++\n\n")
             checkpoint = _sanitize_checkpoint(checkpoint)
             checkpoint = self.serde.dumps_typed(checkpoint)
             metadata = self.serde.dumps_typed(metadata)

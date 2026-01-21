@@ -1,3 +1,4 @@
+import json
 from langchain.agents.middleware.shell_tool import _SessionResources
 from collections import ChainMap, deque
 from typing import Any
@@ -72,3 +73,14 @@ def is_safe_to_serialize(obj: Any) -> bool:
         unsafe in obj_type or unsafe in obj_module
         for unsafe in unsafe_types
     )
+
+
+def dict_to_string(data: dict) -> str:
+    return json.dumps(
+        data,
+        ensure_ascii=False,   # giữ tiếng Việt
+        separators=(",", ":") # gọn, ổn định
+    )
+
+def string_to_dict(text: str) -> dict:
+    return json.loads(text)
