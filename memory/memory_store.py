@@ -10,7 +10,6 @@ from langgraph.store.base import (
     GetOp,
     Item,
     ListNamespacesOp,
-    MatchCondition,
     Op,
     PutOp,
     Result,
@@ -43,7 +42,7 @@ class PineconeMemoryStore(BaseStore):
         self,
         *,
         api_key: str,
-        index_name: str= "langgraph-store",
+        index_name: str = "langgraph-store",
     ):
         self.pc = Pinecone(api_key=api_key)
         self.index = self.pc.Index(index_name)
@@ -57,8 +56,13 @@ class PineconeMemoryStore(BaseStore):
 
     async def abatch(self, ops: Iterable[Op]) -> list[Result]:
         results: list[Result] = []
-        
-        print(f"\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++Chạy vào store rồi ne++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n\n")
+
+        print(
+            "\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+            "Chạy vào store rồi ne"
+            "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
+        )
+
         for op in ops:
             if isinstance(op, GetOp):
                 results.append(await self._get(op))
@@ -108,15 +112,15 @@ class PineconeMemoryStore(BaseStore):
             return None
 
         # Pinecone integrated embedding:
-        # field "text" will be embedded automatically
         record = {
             "id": op.key,
             "text": json.dumps(op.value, ensure_ascii=False),
-            **op.value,
+            "metadata": op.value,
         }
 
+        # 🔥 FIX: records -> vectors
         self.index.upsert(
-            records=[record],
+            vectors=[record],
             namespace=namespace,
         )
 
@@ -125,9 +129,10 @@ class PineconeMemoryStore(BaseStore):
     async def _search(self, op: SearchOp):
         namespace = ns_tuple_to_str(op.namespace_prefix)
 
+        # 🔥 FIX: query -> text
         res = self.index.query(
             namespace=namespace,
-            query=op.query,
+            text=op.query,
             top_k=op.limit,
             include_metadata=True,
             filter=op.filter,
@@ -144,7 +149,6 @@ class PineconeMemoryStore(BaseStore):
         ]
 
     async def _list_namespaces(self, op: ListNamespacesOp):
-        # Pinecone currently cannot enumerate namespaces
         raise NotImplementedError(
             "Pinecone does not support listing namespaces programmatically."
         )

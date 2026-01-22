@@ -1,9 +1,9 @@
 import subprocess
 from langchain.tools import tool, ToolRuntime
-from schemas.base import RunShellArgs
+from schemas.base import RunShellArgs, SaveMemoryArgs
 from langgraph.store.base import PutOp
 import uuid
-
+from memory.memory_store import PineconeMemoryStore
 @tool(args_schema=RunShellArgs)
 def run_shell(command: str, timeout: int = 30) -> str:
     """
@@ -42,12 +42,13 @@ def run_shell(command: str, timeout: int = 30) -> str:
     except Exception as e:
         return f"[EXCEPTION] {e}"
 
-@tool
+@tool(args_schema=SaveMemoryArgs, description="Lưu thông tin quan trọng của người dùng hoặc phiên làm việc vào long-term memory store.")
 async def save_memory(runtime: ToolRuntime,namespace: str, text: str, metadata: dict | None = None):
     """
     Save important long-term memory.
     """
     key = str(uuid.uuid4())
+    store : PineconeMemoryStore = runtime.store
 
     value = {
         "text": text,
@@ -63,4 +64,4 @@ async def save_memory(runtime: ToolRuntime,namespace: str, text: str, metadata: 
     ])
 
     return {"status": "saved", "id": key}
-tools = [run_shell]
+tools = [run_shell,save_memory]

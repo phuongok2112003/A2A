@@ -56,6 +56,7 @@ SYSTEM_PROMPT = """
 Bạn là một trợ lý hữu ích và thông minh.
 Bạn có khả năng trả lời các câu hỏi trực tiếp.
 Bạn có quyền truy cập vào một mạng lưới các chuyên gia (Agent khác).
+Lưu các thông tin quan trọng dài hạn bằng tool save_memory
 Hãy sử dụng công cụ 'call_external_agent' để nhờ họ giúp đỡ khi câu hỏi nằm ngoài khả năng hoặc cần chuyên môn sâu.
 """
 
@@ -382,7 +383,7 @@ class AgentCustom:
         store = PineconeMemoryStore(api_key=settings.PINECONE_KEY)
 
         agent = create_agent(
-            model=llm_gemini,
+            model=llm_openai,
             tools=self.tools,
             system_prompt=self.system_prompt,
             checkpointer=checkpointer,
@@ -392,7 +393,7 @@ class AgentCustom:
             middleware=[
                 SummarizationMiddleware(
                     max_tokens_before_summary=self.max_tokens_before_summary,
-                    model=llm_gemini,
+                    model=llm_openai,
                 ),
                 ModelCallLimitMiddleware(
                     run_limit=5, thread_limit=100, exit_behavior="end"
