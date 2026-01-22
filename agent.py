@@ -21,24 +21,36 @@ from config.logger import log
 import traceback
 import base64
 from langgraph.graph.state import CompiledStateGraph
-from langchain.agents.middleware import (SummarizationMiddleware, HumanInTheLoopMiddleware, ModelCallLimitMiddleware, ToolCallLimitMiddleware,
-                                         PIIMiddleware, TodoListMiddleware, LLMToolSelectorMiddleware, ShellToolMiddleware)
+from langchain.agents.middleware import (
+    SummarizationMiddleware,
+    HumanInTheLoopMiddleware,
+    ModelCallLimitMiddleware,
+    ToolCallLimitMiddleware,
+    PIIMiddleware,
+    TodoListMiddleware,
+    LLMToolSelectorMiddleware,
+    ShellToolMiddleware,
+)
 from middleware_custom import MiddlewareCustom
 from until.check_os_name import build_shell_middleware
-from langgraph.types import Command  
+from langgraph.types import Command
 from langchain.agents.middleware.human_in_the_loop import HITLRequest, Decision
 from a2a.server.tasks import TaskUpdater
 from a2a.types import TaskState
 from a2a.utils import new_agent_text_message, new_task
 from schemas.base import ServerAgentRequest
-from until.convert import dict_to_string
+from until.convert import dict_to_string, string_to_dict
+from until.process_mes import process_mess_interrupt
+from memory.memory_store import PineconeMemoryStore
 # ===============================
 # System Prompt
 # ===============================
 import asyncio
 
+
 async def async_input(prompt: str) -> str:
     return await asyncio.to_thread(input, prompt)
+
 
 SYSTEM_PROMPT = """
 Bạn là một trợ lý hữu ích và thông minh.
@@ -47,94 +59,106 @@ Bạn có quyền truy cập vào một mạng lưới các chuyên gia (Agent k
 Hãy sử dụng công cụ 'call_external_agent' để nhờ họ giúp đỡ khi câu hỏi nằm ngoài khả năng hoặc cần chuyên môn sâu.
 """
 
+
 class DispatcherInput(BaseModel):
-    agent_name: str = Field(description="Tên chính xác của agent cần gọi (lấy từ danh sách mô tả)")
+    agent_name: str = Field(
+        description="Tên chính xác của agent cần gọi (lấy từ danh sách mô tả)"
+    )
     query: str = Field(description="Nội dung câu hỏi hoặc yêu cầu cần gửi tới agent đó")
 
     extra_data: Optional[Dict[str, Any]] = Field(
-        default=None, 
-        description="Dữ liệu cấu trúc JSON bổ sung nếu cần (ví dụ: thông tin user, params config)."
+        default=None,
+        description="Dữ liệu cấu trúc JSON bổ sung nếu cần (ví dụ: thông tin user, params config).",
     )
     file_path: Optional[str] = Field(
-        default=None, 
-        description="Đường dẫn file (local path) hoặc File ID nếu câu hỏi yêu cầu xử lý file."
+        default=None,
+        description="Đường dẫn file (local path) hoặc File ID nếu câu hỏi yêu cầu xử lý file.",
     )
 
 
 class AgentCustom:
-    def __init__(self, tools=None, system_prompt : str = SYSTEM_PROMPT, index_elastic: str = "langgraph_checkpoints", max_tokens_before_summary: int = 2000, 
-                 recursion_limit: int =100, interrupt_on_tool = None):
+    def __init__(
+        self,
+        tools=None,
+        system_prompt: str = SYSTEM_PROMPT,
+        index_elastic: str = "langgraph_checkpoints",
+        max_tokens_before_summary: int = 2000,
+        recursion_limit: int = 100,
+        interrupt_on_tool=None,
+    ):
         self.system_prompt = system_prompt
         self.index_elastic = index_elastic
         self.tools = tools if tools else []
         self.agent_registry = {}
-        self.agent : CompiledStateGraph = None
+        self.agent: CompiledStateGraph = None
         self.max_tokens_before_summary = max_tokens_before_summary
         self.recursion_limit = recursion_limit
         self.interrupt_on_tool = {}
         if interrupt_on_tool:
-             self.interrupt_on_tool={
-                 f"{tool.to_json()['name']}": True for tool in interrupt_on_tool
-             }
+            self.interrupt_on_tool = {
+                f"{tool.to_json()['name']}": True for tool in interrupt_on_tool
+            }
 
     @classmethod
     async def create(cls, access_agent_urls: List[str] = [], **kwargs):
         self = cls(**kwargs)
-      
+
         if access_agent_urls:
             await self._discover_and_register_agents(access_agent_urls)
-            
+
             if self.agent_registry:
                 dispatcher_tool = self._create_dispatcher_tool()
                 self.tools.append(dispatcher_tool)
-      
+
         self.agent = self.gen_agent()
-        
+
         return self
-    
+
     def get_info_tool(self):
-    
+
         for tool in self.tools:
             print(f"Checking tool: {tool.name}")
             print(f"Type: {type(tool)}")
             print(f"Description: {tool.description}")
- 
 
     async def _discover_and_register_agents(self, urls: List[str]):
         """
         Gửi request tới từng URL để lấy Card và lưu vào Registry
         """
         print(f"--- Bắt đầu quét {len(urls)} agent URLs ---")
-        
+
         for base_url in urls:
             try:
-              
-                client, httpx_client, public_card, private_card = await create_client_for_agent(base_url=base_url, auth_token="BerearerTokenExample")
+
+                client, httpx_client, public_card, private_card = (
+                    await create_client_for_agent(
+                        base_url=base_url, auth_token="BerearerTokenExample"
+                    )
+                )
 
                 if public_card.supports_authenticated_extended_card:
                     private_name = private_card.name
-                  
+
                     self.agent_registry[private_name] = {
                         "card": private_card,
                         "client": client,
-                        "httpx_client":httpx_client,
+                        "httpx_client": httpx_client,
                         "url": private_card.url,
                         "scope": "private",
                     }
 
                 public_name = public_card.name
 
-                
                 self.agent_registry[public_name] = {
-                        "card": public_card,
-                        "client": client,
-                        "httpx_client":httpx_client,
-                        "url": public_card.url,
-                        "scope": "public",
-                    }
-                
+                    "card": public_card,
+                    "client": client,
+                    "httpx_client": httpx_client,
+                    "url": public_card.url,
+                    "scope": "public",
+                }
+
                 print(f" Đăng ký agent '{public_name}' từ {base_url}")
-                
+
             except Exception as e:
                 print(f" Lỗi khi kết nối tới {base_url}: {e}")
 
@@ -142,51 +166,54 @@ class AgentCustom:
         """
         Tạo ra một Tool động dựa trên self.agent_registry
         """
-        
-        
+
         agents_desc_str = "\n\n".join(
-                f"""Agent Name: {name}
+            f"""Agent Name: {name}
             Description: {card.description}
 
             Skills:
             {chr(10).join(f"- {skill.name}: {skill.description}" for skill in card.skills)}
             """
-                for name, card in (
-                    (name, info["card"]) for name, info in self.agent_registry.items()
-                )
+            for name, card in (
+                (name, info["card"]) for name, info in self.agent_registry.items()
             )
+        )
 
         print(f"======Tạo Dispatcher Tool với các agent sau:\n{agents_desc_str}\n\n\n")
-        
-        
-        async def call_agent_impl(agent_name: str, query: str, extra_data: Optional[dict] = None, 
-            file_path: Optional[str] = None, config: Annotated[RunnableConfig, InjectedToolArg] = None,
-           
-            ) -> str:
+
+        async def call_agent_impl(
+            agent_name: str,
+            query: str,
+            extra_data: Optional[dict] = None,
+            file_path: Optional[str] = None,
+            config: Annotated[RunnableConfig, InjectedToolArg] = None,
+        ) -> str:
             print(f"\n--- Gọi agent '{agent_name}' với câu hỏi: {query} ---")
             print(f"Extra Data: {extra_data}")
             print(f"File Path: {file_path}")
-           
+
             agent_info = self.agent_registry.get(agent_name)
 
             current_thread_id = config.get("configurable", {}).get("thread_id")
-            
+
             # Fallback nếu không có
             if not current_thread_id:
-                current_thread_id = uuid4().hex 
+                current_thread_id = uuid4().hex
 
             print(f"Đang xử lý trong Context ID: {current_thread_id}")
 
             if not agent_info:
                 return f"Lỗi: Không tìm thấy agent tên '{agent_name}' trong danh bạ."
-            
+
             agent_card = agent_info["card"]
             agent_client = agent_info["client"]
             agent_url = agent_info["url"]
 
             print(f"Đang gọi {agent_name} tại {agent_url}...")
 
-            parts = [TextPart(text=query)]
+            parts = [DataPart(data={"type":"input_user",
+                                    "data": query
+                                    })]
             data_payload = extra_data if extra_data else None
             if data_payload:
                 parts.append(DataPart(data=data_payload))
@@ -198,16 +225,15 @@ class AgentCustom:
                     if not mime_type:
                         mime_type = "application/octet-stream"
 
-                   
                     with open(file_path, "rb") as f:
                         base64_bytes = base64.b64encode(f.read()).decode("utf-8")
-                    
+
                     # Giả định cấu trúc class FilePart của bạn
                     file_part = FilePart(
                         file=FileWithBytes(
-                            bytes= base64_bytes,
+                            bytes=base64_bytes,
                             mime_type=mime_type,
-                            name = os.path.basename(file_path)
+                            name=os.path.basename(file_path),
                         )
                     )
                     parts.append(file_part)
@@ -217,29 +243,58 @@ class AgentCustom:
             elif file_path:
                 return f"Lỗi: Agent tìm thấy tham số file_path='{file_path}' nhưng file không tồn tại trên server."
 
-          
             message = Message(
                 messageId=uuid4().hex,
                 role="user",
                 context_id=current_thread_id,
-                parts= parts
+                parts=parts,
             )
-            
+
             print(f"Đang gọi {agent_name} tại {agent_info['url']}...")
             final_result = None
             try:
-                # --- VÒNG LẶP HỨNG DỮ LIỆU TỪ GENERATOR ---
-                async for chunk_text in send_to_server_agent(client=agent_client, message=message):
-                    
-                    if chunk_text:
- 
-                        print("====Chunk Text====\n",chunk_text, end="\n\n", flush=True)
-                        if chunk_text.get("final") == True:
-                            final_result = chunk_text.get("text")
-                            break
+                while not final_result:
+                    # --- VÒNG LẶP HỨNG DỮ LIỆU TỪ GENERATOR ---
+                    async for chunk_text in send_to_server_agent(
+                        client=agent_client, message=message
+                    ):
 
-                print("Final resuldt huhu",final_result, end="\n\n", flush=True)
-                return final_result if final_result else "Agent đã chạy xong nhưng không trả về nội dung text nào."
+                        if chunk_text:
+
+                            print(
+                                "====Chunk Text====\n", chunk_text, end="\n\n", flush=True
+                            )
+                            if chunk_text["task"].status.state == TaskState.input_required:
+                                data = string_to_dict(chunk_text["text"])
+                                task_id = chunk_text["task"].id
+                                context_id = chunk_text["task"].context_id
+
+                                message = Message(
+                                    messageId=uuid4().hex,
+                                    role="user",
+                                    context_id=context_id,
+                                    parts=[
+                                        DataPart(
+                                            data={"type": "command", "data": {
+                                                "decisions": await process_mess_interrupt(
+                                                    hitl_request=data
+                                                )
+                                            }}
+                                        )
+                                    ],
+                                )
+                                break
+
+                            if chunk_text.get("final") == True:
+                                final_result = chunk_text.get("text")
+                                break
+
+                print("Final resuldt huhu", final_result, end="\n\n", flush=True)
+                return (
+                    final_result
+                    if final_result
+                    else "Agent đã chạy xong nhưng không trả về nội dung text nào."
+                )
 
             except Exception as e:
                 return f"Lỗi khi gọi {agent_name}: {str(e)}"
@@ -256,11 +311,11 @@ class AgentCustom:
             DANH SÁCH AGENT KHẢ DỤNG:
             {agents_desc_str}
             """,
-            args_schema=DispatcherInput # Validate input đầu vào
+            args_schema=DispatcherInput,  # Validate input đầu vào
         )
-    
-    def gen_agent(self)-> CompiledStateGraph :
-        
+
+    def gen_agent(self) -> CompiledStateGraph:
+
         llm_gemini = ChatGoogleGenerativeAI(
             model="models/gemini-2.0-flash",
             temperature=0.2,
@@ -273,11 +328,10 @@ class AgentCustom:
             openai_api_base="http://localhost:11434/v1",
         )
 
-
         # Memory với Elasticsearch
         print("Connecting to Elasticsearch at", settings.ELASTICSEARCH_URL)
         es = Elasticsearch(settings.ELASTICSEARCH_URL)
-        
+
         try:
             if not es.indices.exists(index=self.index_elastic):
                 es.indices.create(
@@ -290,33 +344,31 @@ class AgentCustom:
                                 "ts": {"type": "date"},
                                 "parent_config": {"type": "keyword"},
                                 "type": {"type": "keyword"},
-                                
                                 # Object với nested structure
                                 "checkpoint": {
                                     "properties": {
                                         "type": {"type": "keyword"},
-                                        "blob": {"type": "text", "index": False}
+                                        "blob": {"type": "text", "index": False},
                                     }
                                 },
                                 "metadata": {
                                     "properties": {
                                         "type": {"type": "keyword"},
-                                        "blob": {"type": "text", "index": False}
+                                        "blob": {"type": "text", "index": False},
                                     }
                                 },
                                 "writes": {
                                     "properties": {
                                         "type": {"type": "keyword"},
-                                        "blob": {"type": "text", "index": False}
+                                        "blob": {"type": "text", "index": False},
                                     }
                                 },
-                                
                                 # Các trường cho put_writes
                                 "task_id": {"type": "keyword"},
-                                "task_path": {"type": "keyword"}
+                                "task_path": {"type": "keyword"},
                             }
                         }
-                    }
+                    },
                 )
 
         except Exception as e:
@@ -325,35 +377,47 @@ class AgentCustom:
         # Memory cho mỗi thread (mỗi context_id)
         # checkpointer = MemorySaver()
 
-        checkpointer = ElasticsearchCheckpointSaver(
-            es=es,
-            index=self.index_elastic
-        )   
+        checkpointer = ElasticsearchCheckpointSaver(es=es, index=self.index_elastic)
+
+        store = PineconeMemoryStore(api_key=settings.PINECONE_KEY)
 
         agent = create_agent(
-            model=llm_openai,
+            model=llm_gemini,
             tools=self.tools,
             system_prompt=self.system_prompt,
             checkpointer=checkpointer,
-            # store=
+            store=store,
             name="gemini-agent",
             debug=True,
-            middleware=[SummarizationMiddleware(max_tokens_before_summary=self.max_tokens_before_summary, model=llm_openai), 
-                        ModelCallLimitMiddleware(run_limit= 5, thread_limit= 100, exit_behavior="end"),
-                        ToolCallLimitMiddleware(run_limit=10, thread_limit= 10, exit_behavior= "end"),
-                        PIIMiddleware("email", strategy="redact", apply_to_input=True, apply_to_output=True, apply_to_tool_results=True),
-                        PIIMiddleware("credit_card", strategy="block"),
-                        PIIMiddleware("ip", strategy="hash"),
-                        # PIIMiddleware("url", strategy="redact", apply_to_output=True),
-                        TodoListMiddleware(),
-                        # build_shell_middleware(),
-                        HumanInTheLoopMiddleware(
-                            interrupt_on=self.interrupt_on_tool
-                        ),
-                        # LLMToolSelectorMiddleware(model = llm_gemini, max_tools=5, always_include=["call_external_agent"]),
-                        ]
+            middleware=[
+                SummarizationMiddleware(
+                    max_tokens_before_summary=self.max_tokens_before_summary,
+                    model=llm_gemini,
+                ),
+                ModelCallLimitMiddleware(
+                    run_limit=5, thread_limit=100, exit_behavior="end"
+                ),
+                ToolCallLimitMiddleware(
+                    run_limit=10, thread_limit=10, exit_behavior="end"
+                ),
+                PIIMiddleware(
+                    "email",
+                    strategy="redact",
+                    apply_to_input=True,
+                    apply_to_output=True,
+                    apply_to_tool_results=True,
+                ),
+                PIIMiddleware("credit_card", strategy="block"),
+                PIIMiddleware("ip", strategy="hash"),
+                # PIIMiddleware("url", strategy="redact", apply_to_output=True),
+                TodoListMiddleware(),
+                # build_shell_middleware(),
+                HumanInTheLoopMiddleware(interrupt_on=self.interrupt_on_tool),
+                # LLMToolSelectorMiddleware(model = llm_gemini, max_tools=5, always_include=["call_external_agent"]),
+            ],
         )
-     
+        print("Type của agent: ",type(agent))
+
 
         return agent
 
@@ -370,12 +434,7 @@ class AgentCustom:
             }
 
             result = await self.agent.ainvoke(
-                {
-                    "messages": [
-                        HumanMessage(content=user_input)
-                    ]
-                },
-                config=config
+                {"messages": [HumanMessage(content=user_input)]}, config=config
             )
 
             # result["messages"] là toàn bộ lịch sử
@@ -383,7 +442,6 @@ class AgentCustom:
         except Exception as e:
             log.error(f"Lỗi khi chạy agent: {e}  {traceback.format_exc()}")
             return f"Lỗi khi chạy agent: {e}"
-    
 
     async def run_astream(self, user_input: str, context_id: str):
         config = {
@@ -411,44 +469,15 @@ class AgentCustom:
                     interrupted = True
                     interrupt_event = payload["__interrupt__"][0]
                     hitl_request = interrupt_event.value
-
-                    action_requests = hitl_request["action_requests"]
- 
-                    decisions = []
-                    # print(f"=====================dfdfd============d============{req.to_string() for }++++++++++++++++++++++++++++++++++++++++")
-                    for req in action_requests:
-                        
-                        decision = (await async_input(
-                            "Decision (approve / reject / edit): "
-                        )).strip().lower()
-
-                        if decision == "approve":
-                            decisions.append({"type": "approve"})
-
-                        elif decision == "reject":
-                            message = await async_input("Reject reason: ")
-                            decisions.append({
-                                "type": "reject",
-                                "message": message
-                            })
-
-                        elif decision == "edit":
-                            new_args = {}
-                            for k, v in req["args"].items():
-                                new_args[k] = await async_input(
-                                    f"{k} (default={v}): "
-                                )
-
-                            decisions.append({
-                                "type": "edit",
-                                "edited_action": {
-                                    "name": req["name"],
-                                    "args": new_args
-                                }
-                            })
-                    
-                    input_payload = Command(resume={"decisions": decisions})
-                    break  
+                    decisions = Command(
+                        resume={
+                            "decisions": await process_mess_interrupt(
+                                hitl_request=hitl_request
+                            )
+                        }
+                    )
+                    input_payload = decisions
+                    break
 
             if not interrupted:
                 break

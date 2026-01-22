@@ -5,3 +5,4 @@ langchain_google_genai
 elasticsearch==7.17.9
 langchain-mcp-adapters
 fastmcp
+pinecone

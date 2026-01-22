@@ -27,7 +27,7 @@ async def main():
         user_input=user_input,
         context_id=context_id
     ):
-        print(res)
+        print("Trợ lý:",res)
 
 if __name__ == "__main__":
     import asyncio

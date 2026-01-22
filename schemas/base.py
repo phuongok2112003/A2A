@@ -14,10 +14,7 @@ class RunShellArgs(BaseModel):
         description="Timeout in seconds"
     )
 
-class InputPayload(BaseModel):
-    type : str
-    data : Message
 class ServerAgentRequest(BaseModel):
     context_id: str | None = None
     task_id: str | None = None
-    input_payload : InputPayload
+    input_payload : Message

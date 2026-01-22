@@ -1,7 +1,8 @@
 import subprocess
-from langchain_core.tools import tool
+from langchain.tools import tool, ToolRuntime
 from schemas.base import RunShellArgs
-
+from langgraph.store.base import PutOp
+import uuid
 
 @tool(args_schema=RunShellArgs)
 def run_shell(command: str, timeout: int = 30) -> str:
@@ -41,4 +42,25 @@ def run_shell(command: str, timeout: int = 30) -> str:
     except Exception as e:
         return f"[EXCEPTION] {e}"
 
+@tool
+async def save_memory(runtime: ToolRuntime,namespace: str, text: str, metadata: dict | None = None):
+    """
+    Save important long-term memory.
+    """
+    key = str(uuid.uuid4())
+
+    value = {
+        "text": text,
+        "metadata": metadata or {}
+    }
+
+    await store.abatch([
+        PutOp(
+            namespace=("memory", namespace),
+            key=key,
+            value=value
+        )
+    ])
+
+    return {"status": "saved", "id": key}
 tools = [run_shell]

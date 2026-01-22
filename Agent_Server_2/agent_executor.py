@@ -21,7 +21,7 @@ from .tools import tools
 from typing import List
 from Agent_Server.agent_executor import BaseAgentExecutor
 from typing import Callable
-from schemas.base import ServerAgentRequest,InputPayload
+from schemas.base import ServerAgentRequest
 from until.convert import string_to_dict
 class CurrencyAgentExecutor(BaseAgentExecutor):
     """
@@ -70,10 +70,10 @@ class CurrencyAgentExecutor(BaseAgentExecutor):
             )
             
             request_agent = ServerAgentRequest(context_id=task.context_id, task_id= task.id,
-                                               input_payload=InputPayload(data=context.message, type=context.message.parts[0].root.kind))
+                                               input_payload=context.message)
 
-            result_text = await self.run_astream_in_agent_server(client=updater,server_agent=request_agent)
-            print(f"[INFO] Conversion result: {result_text}")
+            await self.run_astream_in_agent_server(client=updater,server_agent=request_agent)
+       
             # await updater.update_status(
             #     state="completed",
             #     message=new_agent_text_message(result_text,task.context_id, task.id)
