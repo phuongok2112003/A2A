@@ -1,6 +1,7 @@
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from langchain.agents import create_agent
+# from deepagents import create_deep_agent
 from langchain_core.tools import tool
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from langgraph.checkpoint.memory import MemorySaver
@@ -31,6 +32,7 @@ from langchain.agents.middleware import (
     LLMToolSelectorMiddleware,
     ShellToolMiddleware,
 )
+from dataclasses import dataclass
 from middleware_custom import MiddlewareCustom
 from until.check_os_name import build_shell_middleware
 from langgraph.types import Command
@@ -56,10 +58,13 @@ SYSTEM_PROMPT = """
 Bạn là một trợ lý hữu ích và thông minh.
 Bạn có khả năng trả lời các câu hỏi trực tiếp.
 Bạn có quyền truy cập vào một mạng lưới các chuyên gia (Agent khác).
-Lưu các thông tin quan trọng dài hạn bằng tool save_memory
+Lưu các thông tin quan trọng dài hạn bằng tool save_memory.
+Truy vẫn các thông tin dài hạn bằng tool get_long_memory.
 Hãy sử dụng công cụ 'call_external_agent' để nhờ họ giúp đỡ khi câu hỏi nằm ngoài khả năng hoặc cần chuyên môn sâu.
 """
-
+@dataclass
+class Context:
+    user_id: str
 
 class DispatcherInput(BaseModel):
     agent_name: str = Field(
@@ -389,7 +394,8 @@ class AgentCustom:
             checkpointer=checkpointer,
             store=store,
             name="gemini-agent",
-            debug=True,
+            debug=False,
+            context_schema=Context,
             middleware=[
                 SummarizationMiddleware(
                     max_tokens_before_summary=self.max_tokens_before_summary,
@@ -444,7 +450,7 @@ class AgentCustom:
             log.error(f"Lỗi khi chạy agent: {e}  {traceback.format_exc()}")
             return f"Lỗi khi chạy agent: {e}"
 
-    async def run_astream(self, user_input: str, context_id: str):
+    async def run_astream(self, user_input: str, context_id: str, user_id:str =None):
         config = {
             "configurable": {"thread_id": context_id},
             "recursion_limit": self.recursion_limit,
@@ -460,6 +466,7 @@ class AgentCustom:
                 input_payload,
                 config=config,
                 stream_mode=["values", "updates", "messages"],
+                context=Context(user_id=user_id) if user_id else None
             ):
                 # giữ state cuối
                 if mode == "values":
