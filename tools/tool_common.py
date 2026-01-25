@@ -142,6 +142,7 @@ async def get_long_memory(
     # 4. Format
     formatted_memories = []
     for item in results:
+        print(f"item {item}")
         content = item.value.get("text", "")
         # Vì Pinecone integrated inference đôi khi trả về text nằm ngoài metadata hoặc trong metadata
         # Store._search đã xử lý việc lấy metadata ra value.

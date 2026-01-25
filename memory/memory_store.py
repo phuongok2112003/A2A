@@ -19,6 +19,10 @@ from langgraph.store.base import (
     SearchOp,
 )
 
+from langchain_pinecone import PineconeEmbeddings
+from langchain_pinecone import PineconeVectorStore
+from langchain_core.documents import Document
+
 # ---------------------------
 # Helpers
 # ---------------------------
@@ -76,6 +80,9 @@ class PineconeMemoryStore(BaseStore):
             )
         self.index = self.pc.Index(index_name)
 
+        self.embeddings = PineconeEmbeddings(model=settings.MODEL_EMBEDING, pinecone_api_key=settings.PINECONE_KEY)
+        self.vector_store  = PineconeVectorStore(index=self.index, embedding=self.embeddings)
+
     def batch(self, ops: Iterable[Op]) -> list[Result]:
         raise RuntimeError("Use async APIs (abatch)")
 
@@ -119,79 +126,53 @@ class PineconeMemoryStore(BaseStore):
             self.index.delete(ids=[op.key], namespace=namespace)
             return None
 
-        # 1. Chuẩn bị Metadata
-        # Lấy metadata gốc từ op.value
+      
         raw_metadata = op.value.get("metadata", {})
-        
-        # Làm sạch để tránh lỗi 400 Bad Request
-        clean_metadata = _clean_metadata_for_pinecone(raw_metadata)
 
-    
+        documment =Document(
+            id= op.key,
+            page_content=op.value.get("text",""),
+            metadata=raw_metadata,
+        )
+        await self.vector_store.aadd_documents([documment])
 
-        # 2. Tạo record chuẩn cho Integrated Inference
-        # Cấu trúc bắt buộc: {"_id": ..., "text": ..., "metadata": ...}
-        record = {
-            "_id": op.key,
-            "text": op.value.get("text", ""), 
-        }
-        record.update(clean_metadata)
-
-        print(f"=== [Pinecone Put] Namespace: {namespace} | ID: {op.key} ===")
-
-        # 3. Context Manager vá lỗi Unicode trên Windows
-        @contextlib.contextmanager
-        def force_ascii_json_dumps():
-            original_dumps = json.dumps
-            def dumps_safe(*args, **kwargs):
-                kwargs['ensure_ascii'] = True 
-                return original_dumps(*args, **kwargs)
-            json.dumps = dumps_safe
-            try:
-                yield
-            finally:
-                json.dumps = original_dumps
-
-        # 4. Upsert
-        with force_ascii_json_dumps():
-            self.index.upsert_records(
-                namespace=namespace,
-                records=[record],
-            )
         return None
 
     async def _search(self, op: SearchOp):
         namespace = ns_tuple_to_str(op.namespace_prefix)
 
-        # Chuẩn bị query payload
-        query_payload = {"text": op.query}
-        
-        # QUAN TRỌNG: Thêm filter vào query
-        # op.filter chính là cái {"category": "semantic"} truyền từ tool xuống
-        extra_args = {}
-        if op.filter:
-            extra_args["filter"] = op.filter
+        query_payload = {
+            "inputs": {
+                "text": op.query
+            },
+            "top_k": op.limit
+        }
 
-        import inspect
-
-        print(inspect.signature(self.index.search_records))
-        print(self.index.search_records.__doc__)
-
-        res = self.index.search_records(
-            namespace=namespace,
-            query=query_payload,
-            # limit=op.limit,
-            # **extra_args # Bung filter vào đây
+        results = await self.vector_store.asimilarity_search_with_score(
+            op.query,
+            k=op.limit,
+            filter=op.filter,
         )
 
-        return [
-            SearchItem(
-                namespace=op.namespace_prefix,
-                key=match["_id"],
-                value=match.get("metadata", {}),
-                score=match["_score"],
+        items: list[SearchItem] = []
+
+
+        for res, score in results:
+   
+
+            items.append(
+                SearchItem(
+                    namespace=op.namespace_prefix,
+                    created_at=res.metadata["created_at"],
+                    updated_at= res.metadata["created_at"],
+                    key=res.id,
+                    value=res.page_content,
+                    score=score,
+                )
             )
-            for match in res["matches"]
-        ]
+
+        return items
+
 
     async def _list_namespaces(self, op: ListNamespacesOp):
         raise NotImplementedError("Pinecone does not support listing namespaces.")
