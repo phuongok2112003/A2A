@@ -166,10 +166,14 @@ class PineconeMemoryStore(BaseStore):
                     created_at=res.metadata["created_at"],
                     updated_at= res.metadata["created_at"],
                     key=res.id,
-                    value=res.page_content,
+                    value={
+                        "text":res.page_content,
+                        "metadata":res.metadata
+                    },
                     score=score,
                 )
             )
+    
 
         return items
 

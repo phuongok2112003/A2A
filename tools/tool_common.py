@@ -97,14 +97,14 @@ async def get_long_memory(
     query: str,
     category: Literal["all", "semantic", "episodic"] = "all",
     limit: int = 5,
-):
+)-> dict:
     """
     Search long-term memory.
     """
     user_id = runtime.context.user_id
     store: PineconeMemoryStore = runtime.store
     print(
-        f"++++++++++++++++++chay vafo get long memroy roio nef {query}+++++++++{category}+++++++++++++++++++++++++++++"
+        f"++++++++++++++++++chay vafo get long memroy roio ne: {query}+++++++++{category}+++++++++++++++++++++++++++++"
     )
 
     # 1. Namespace gốc cần tìm (phải khớp với lúc save)
@@ -136,26 +136,46 @@ async def get_long_memory(
         ]
     )
 
-    if not results:
-        return "Không tìm thấy ký ức nào liên quan."
+    if not results or not results[0]:
+        return {
+            "memories": [],
+            "raw": [],
+        }
 
-    # 4. Format
-    formatted_memories = []
-    for item in results:
-        print(f"item {item}")
-        content = item.value.get("text", "")
-        # Vì Pinecone integrated inference đôi khi trả về text nằm ngoài metadata hoặc trong metadata
-        # Store._search đã xử lý việc lấy metadata ra value.
+    search_items = results[0]
 
-        meta = item.value  # Store trả về item.value chính là metadata
-        created_at = meta.get("created_at", "N/A")
-        cat = meta.get("category", "INFO")
-        tags = meta.get("tags", [])
+    formatted_memories: list[str] = []
+    raw_items: list[dict] = []
 
-        entry = f"- [{created_at}] [{cat.upper()}] {content} (Tags: {tags})"
+    for item in search_items:
+        val = item.value if isinstance(item.value, dict) else {}
+        text = val.get("text", "")
+        meta = val.get("metadata", {})
+
+        entry = (
+            f"- [{meta.get('created_at','N/A')}] "
+            f"[{meta.get('category','INFO').upper()}] "
+            f"{text} "
+            f"(Tags: {meta.get('tags', [])})"
+        )
+
         formatted_memories.append(entry)
 
-    return "\n".join(formatted_memories)
+        raw_items.append(
+            {
+                "text": text,
+                "metadata": meta,
+                "score": item.score,
+                "key": item.key,
+                "namespace": item.namespace,
+            }
+        )
+   
+    print(f"raw {raw_items} \n formatted_memories: {formatted_memories} ")
+    return {
+        "memories": formatted_memories,
+        "raw": raw_items,
+    }
 
 
 tools = [save_memory, run_shell, get_long_memory]  ### Attach list tool for agent

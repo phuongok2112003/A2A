@@ -456,7 +456,7 @@ class AgentCustom:
             checkpointer=checkpointer,
             store=store,
             name="gemini-agent",
-            debug=False,
+            debug=True,
             context_schema=Context,
             middleware=[
                 SummarizationMiddleware(
