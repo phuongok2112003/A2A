@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     OPENAI_A2A_API_KEY: str = os.getenv("OPENAI_A2A_API_KEY", "your_openai_api_key")
     PINECONE_KEY: str = os.getenv("PINECONE_KEY","your_pinecone_api_key")
     MODEL_EMBEDING:str = os.getenv("MODEL_EMBEDING","llama-text-embed-v2")
+    TAVILY_API_KEY:str = os.getenv("TAVILY_API_KEY","")
     APP_NAME: str = "A2A_Application"
 
 settings = Settings()
