@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     PINECONE_KEY: str = os.getenv("PINECONE_KEY","your_pinecone_api_key")
     MODEL_EMBEDING:str = os.getenv("MODEL_EMBEDING","llama-text-embed-v2")
     TAVILY_API_KEY:str = os.getenv("TAVILY_API_KEY","")
+    BOOT_ZALO_TOkEN:str = os.getenv("BOOT_ZALO_TOkEN","")
     APP_NAME: str = "A2A_Application"
 
 settings = Settings()
