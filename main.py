@@ -9,7 +9,14 @@ from contextlib import asynccontextmanager
 from Agent_Client.client_a2a import create_client_for_agent, send_to_server_agent
 import json
 import zalo_bot
-bot_zalo = zalo_bot.Bot(settings.BOOT_ZALO_TOkEN)
+from until.webhook_zalo_bot import ngrok_tunel_zalo_bot_webhook
+from services.chat_service import ChatService
+import asyncio
+
+bot_zalo = zalo_bot.Bot(settings.BOOT_ZALO_TOKEN)
+
+# bot_zalo.set_webhook(secret_token=settings.SECRET_TOKEN_WEBHOOK_ZALO, url= f"{ngrok_tunel_zalo_bot_webhook.public_url}/zalo/webhook")
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.agent1_app = await server_agent_1.build()
@@ -17,9 +24,28 @@ async def lifespan(app: FastAPI):
 
     app.mount(settings.AGENT_1_PATH, app.state.agent1_app)
     app.mount(settings.AGENT_2_PATH, app.state.agent2_app)
-    yield
+
+
+    app.state.chat_service = ChatService()
+    asyncio.create_task(app.state.chat_service.init())
+
+
+    try:
+        await bot_zalo._set_webhook_async(
+            url=f"{ngrok_tunel_zalo_bot_webhook.public_url}/zalo/webhook",
+            secret_token=settings.SECRET_TOKEN_WEBHOOK_ZALO,
+        )
+        print("Webhook registered")
+
+        yield
+
+    finally:
+        print("Shutdown...")
+
 
 app = FastAPI(title="Currency Agent Platform", lifespan=lifespan)
+
+
 
 # normal APIs
 @app.get("/health")
@@ -30,17 +56,27 @@ def health():
 @app.post("/zalo/webhook")
 async def zalo_webhook(req: Request):
     payload = await req.json()
+    chat_service: ChatService = req.app.state.chat_service
     signature = req.headers.get("X-Zalo-Signature")
 
-    print(signature)
+    print(f"signature {signature}")
     
     print(json.dumps(payload, indent=2, ensure_ascii=False))
-    update = await bot_zalo.get_update(timeout=60)
+    
 
     chat_id = payload["message"]["chat"]["id"]
 
+
     print(chat_id)
-    await bot_zalo.send_message(chat_id=chat_id,text="chao Anh Phuong")
+
+    res = await chat_service.process_chat(user_id=chat_id, context_id="zalo_bot",user_input=payload["message"]["text"])
+
+    message_id = payload["message"]["message_id"]
+    print(message_id)
+
+    print(f"Respose {res}")
+
+    await bot_zalo.send_message(chat_id=chat_id,text= res[:1200],reply_to_message_id=message_id)
 
 
     return {"status": "ok"}

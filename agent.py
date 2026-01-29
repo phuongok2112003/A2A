@@ -450,7 +450,7 @@ class AgentCustom:
         store = PineconeMemoryStore(api_key=settings.PINECONE_KEY)
 
         agent = create_agent(
-            model=llm_openai,
+            model=llm_gemini,
             tools=self.tools,
             system_prompt=self.system_prompt,
             checkpointer=checkpointer,
@@ -461,7 +461,7 @@ class AgentCustom:
             middleware=[
                 SummarizationMiddleware(
                     max_tokens_before_summary=self.max_tokens_before_summary,
-                    model=llm_openai,
+                    model=llm_gemini,
                 ),
                 ModelCallLimitMiddleware(
                     run_limit=5, thread_limit=100, exit_behavior="end"
