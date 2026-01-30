@@ -1,7 +1,8 @@
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
+from langchain_ollama import ChatOllama
 from langchain.agents import create_agent
-# from deepagents import create_deep_agent
+from deepagents import create_deep_agent
 from langchain_core.tools import tool
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from langgraph.checkpoint.memory import MemorySaver
@@ -31,6 +32,7 @@ from langchain.agents.middleware import (
     TodoListMiddleware,
     LLMToolSelectorMiddleware,
     ShellToolMiddleware,
+    ModelFallbackMiddleware,
 )
 from dataclasses import dataclass
 from middleware_custom import MiddlewareCustom
@@ -384,17 +386,6 @@ class AgentCustom:
 
     def gen_agent(self) -> CompiledStateGraph:
 
-        llm_gemini = ChatGoogleGenerativeAI(
-            model="models/gemini-2.0-flash",
-            temperature=0.2,
-            google_api_key=settings.GOOGLE_A2A_API_KEY,
-        )
-        llm_openai = ChatOpenAI(
-            model_name="gpt-oss:latest",
-            temperature=0.2,
-            openai_api_key=settings.OPENAI_A2A_API_KEY,
-            openai_api_base="http://localhost:11434/v1",
-        )
 
         # Memory với Elasticsearch
         print("Connecting to Elasticsearch at", settings.ELASTICSEARCH_URL)
@@ -445,12 +436,49 @@ class AgentCustom:
         # Memory cho mỗi thread (mỗi context_id)
         # checkpointer = MemorySaver()
 
+        llm_gemini = ChatGoogleGenerativeAI(
+            model="models/gemini-2.0-flash",
+            temperature=0.2,
+            google_api_key=settings.GOOGLE_A2A_API_KEY,
+        )
+        llm_openai = ChatOpenAI(
+            model_name="gpt-oss:latest",
+            temperature=0.2,
+            openai_api_key=settings.OPENAI_A2A_API_KEY,
+            openai_api_base="http://localhost:11434/v1",
+        )
+        llm_ollama_gpt = ChatOllama(
+            model="gpt-oss:120b-cloud",
+            base_url="https://ollama.com",
+            client_kwargs={
+                "headers": {
+                    "Authorization": f"Bearer {settings.OLLAMA_KEY}"
+                },
+                "timeout": 120,
+            },
+            temperature=0,
+        
+        )
+        llm_ollama_kimi = ChatOllama(
+            model="kimi-k2.5:cloud",
+            base_url="https://ollama.com",
+            client_kwargs={
+                "headers": {
+                    "Authorization": f"Bearer {settings.OLLAMA_KEY}"
+                },
+                "timeout": 120,
+            },
+            temperature=0,
+        
+        )
+        
+        
         checkpointer = ElasticsearchCheckpointSaver(es=es, index=self.index_elastic)
 
         store = PineconeMemoryStore(api_key=settings.PINECONE_KEY)
 
         agent = create_agent(
-            model=llm_gemini,
+            model=llm_ollama_kimi,
             tools=self.tools,
             system_prompt=self.system_prompt,
             checkpointer=checkpointer,
@@ -461,7 +489,7 @@ class AgentCustom:
             middleware=[
                 SummarizationMiddleware(
                     max_tokens_before_summary=self.max_tokens_before_summary,
-                    model=llm_gemini,
+                    model=llm_ollama_gpt,
                 ),
                 ModelCallLimitMiddleware(
                     run_limit=5, thread_limit=100, exit_behavior="end"
@@ -482,6 +510,7 @@ class AgentCustom:
                 TodoListMiddleware(),
                 # build_shell_middleware(),
                 HumanInTheLoopMiddleware(interrupt_on=self.interrupt_on_tool),
+                ModelFallbackMiddleware(llm_ollama_kimi)
                 # LLMToolSelectorMiddleware(model = llm_gemini, max_tools=5, always_include=["call_external_agent"]),
             ],
         )
@@ -512,13 +541,39 @@ class AgentCustom:
             log.error(f"Lỗi khi chạy agent: {e}  {traceback.format_exc()}")
             return f"Lỗi khi chạy agent: {e}"
 
-    async def run_astream(self, user_input: str, context_id: str, user_id:str =None):
+    async def run_astream(self, context_id: str, user_id:str =None, user_input_text: str = None, user_input_photo: bytes  = None):
         config = {
             "configurable": {"thread_id": context_id},
             "recursion_limit": self.recursion_limit,
         }
 
-        input_payload = {"messages": [HumanMessage(content=user_input)]}
+        content: list[dict] = []
+
+    
+        content.append(
+            {
+                "type": "text",
+                "text": user_input_text if user_input_text else "Miêu tả bức ảnh này",
+            }
+    
+        )
+        if user_input_photo:
+            image_b64 = base64.b64encode(user_input_photo).decode("utf-8")
+
+            content.append(
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/jpeg;base64,{image_b64}"
+                    }
+                }
+                
+            )
+
+        if not content:
+            raise ValueError("run_astream requires at least text or photo input")
+
+        input_payload = {"messages": [HumanMessage(content=content)]}
         final_state = None
 
         while True:

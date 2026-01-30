@@ -177,8 +177,23 @@ async def get_long_memory(
         "raw": raw_items,
     }
 
+@tool(description="Run a web search")
+def internet_search(
+    query: str,
+    max_results: int = 5,
+    topic: Literal["general", "news", "finance"] = "general",
+    include_raw_content: bool = False,
+):
+    
+    return tavily_client.search(
+        query,
+        max_results=max_results,
+        include_raw_content=include_raw_content,
+        topic=topic,
+    )
 
-tools = [save_memory, run_shell, get_long_memory]  ### Attach list tool for agent
+
+tools = [save_memory, run_shell, get_long_memory, internet_search]  ### Attach list tool for agent
 interrupt_on_tool = [
     run_shell
 ]  ### Attach list tool for agent to interruput when call tool

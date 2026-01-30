@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     BOOT_ZALO_TOKEN:str = os.getenv("BOOT_ZALO_TOkEN","")
     SECRET_TOKEN_WEBHOOK_ZALO:str = os.getenv("SECRET_TOKEN_WEBHOOK_ZALO","")
     NGROK_API:str = os.getenv("NGROK_API","http://127.0.0.1:4040/api/tunnels")
+    OLLAMA_KEY:str = os.getenv("OLLAMA_KEY","")
     APP_NAME: str = "A2A_Application"
 
 settings = Settings()

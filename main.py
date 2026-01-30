@@ -12,6 +12,7 @@ import zalo_bot
 from until.webhook_zalo_bot import ngrok_tunel_zalo_bot_webhook
 from services.chat_service import ChatService
 import asyncio
+from until.enum import EventName
 
 bot_zalo = zalo_bot.Bot(settings.BOOT_ZALO_TOKEN)
 
@@ -24,11 +25,6 @@ async def lifespan(app: FastAPI):
 
     app.mount(settings.AGENT_1_PATH, app.state.agent1_app)
     app.mount(settings.AGENT_2_PATH, app.state.agent2_app)
-
-
-    app.state.chat_service = ChatService()
-    asyncio.create_task(app.state.chat_service.init())
-
 
     try:
         await bot_zalo._set_webhook_async(
@@ -55,8 +51,9 @@ def health():
 
 @app.post("/zalo/webhook")
 async def zalo_webhook(req: Request):
+    chat_service = ChatService()
+    await chat_service.init()
     payload = await req.json()
-    chat_service: ChatService = req.app.state.chat_service
     signature = req.headers.get("X-Zalo-Signature")
 
     print(f"signature {signature}")
@@ -66,20 +63,28 @@ async def zalo_webhook(req: Request):
 
     chat_id = payload["message"]["chat"]["id"]
 
-
-    print(chat_id)
-
-    res = await chat_service.process_chat(user_id=chat_id, context_id="zalo_bot",user_input=payload["message"]["text"])
-
     message_id = payload["message"]["message_id"]
-    print(message_id)
 
-    print(f"Respose {res}")
+    event_name = payload.get("event_name")
+    if event_name == EventName.Unsupported.value:
+        await bot_zalo.send_message(chat_id=chat_id,text="Toi không hỗ trợ loại tin nhắn này",reply_to_message_id=message_id)
+        return {"status": "ok"}
+    elif event_name == EventName.Sticker.value:
+        await bot_zalo.send_sticker(chat_id=chat_id,sticker="4591eff8d2bd3be362ac",reply_to_message_id=message_id)
+        return {"status": "ok"}
+    else:
+        res = await chat_service.process_chat(user_id=chat_id, context_id="zalo_bot",
+                                              user_input_text= payload["message"]["text"] if event_name==EventName.Text else None,
+                                              user_input_photo = payload["message"]["photo_url"])
 
-    await bot_zalo.send_message(chat_id=chat_id,text= res[:1200],reply_to_message_id=message_id)
+        print(message_id)
+
+        print(f"Respose {res}")
+
+        await bot_zalo.send_message(chat_id=chat_id,text= res[:1200],reply_to_message_id=message_id)
 
 
-    return {"status": "ok"}
+        return {"status": "ok"}
 
 
 @app.get("/call_agents1")
