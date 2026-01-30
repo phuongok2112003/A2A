@@ -1,0 +1,105 @@
+bash: line 3: uvicorn: command not found
+INFO:     Will watch for changes in these directories: ['/home/x-phuong/Code/A2A']
+INFO:     Uvicorn running on http://0.0.0.0:10000 (Press CTRL+C to quit)
+INFO:     Started reloader process [37966] using StatReload
+INFO:     Started server process [37968]
+INFO:     Waiting for application startup.
+Task exception was never retrieved
+future: <Task finished name='Task-3' coro=<ChatService.init() done, defined at /home/x-phuong/Code/A2A/services/chat_service.py:12> exception=ValueError('Elasticsearch connection error: ConnectionError(<urllib3.connection.HTTPConnection object at 0x7af1a54f85c0>: Failed to establish a new connection: [Errno 111] Connection refused) caused by: NewConnectionError(<urllib3.connection.HTTPConnection object at 0x7af1a54f85c0>: Failed to establish a new connection: [Errno 111] Connection refused)')>
+Traceback (most recent call last):
+  File "/home/x-phuong/Code/A2A/venv/lib/python3.12/site-packages/urllib3/connection.py", line 174, in _new_conn
+    conn = connection.create_connection(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/x-phuong/Code/A2A/venv/lib/python3.12/site-packages/urllib3/util/connection.py", line 95, in create_connection
+    raise err
+  File "/home/x-phuong/Code/A2A/venv/lib/python3.12/site-packages/urllib3/util/connection.py", line 85, in create_connection
+    sock.connect(sa)
+ConnectionRefusedError: [Errno 111] Connection refused
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/x-phuong/Code/A2A/venv/lib/python3.12/site-packages/elasticsearch/connection/http_urllib3.py", line 255, in perform_request
+    response = self.pool.urlopen(
+               ^^^^^^^^^^^^^^^^^^
+  File "/home/x-phuong/Code/A2A/venv/lib/python3.12/site-packages/urllib3/connectionpool.py", line 802, in urlopen
+    retries = retries.increment(
+              ^^^^^^^^^^^^^^^^^^
+  File "/home/x-phuong/Code/A2A/venv/lib/python3.12/site-packages/urllib3/util/retry.py", line 527, in increment
+    raise six.reraise(type(error), error, _stacktrace)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/x-phuong/Code/A2A/venv/lib/python3.12/site-packages/urllib3/packages/six.py", line 770, in reraise
+    raise value
+  File "/home/x-phuong/Code/A2A/venv/lib/python3.12/site-packages/urllib3/connectionpool.py", line 716, in urlopen
+    httplib_response = self._make_request(
+                       ^^^^^^^^^^^^^^^^^^^
+  File "/home/x-phuong/Code/A2A/venv/lib/python3.12/site-packages/urllib3/connectionpool.py", line 416, in _make_request
+    conn.request(method, url, **httplib_request_kw)
+  File "/home/x-phuong/Code/A2A/venv/lib/python3.12/site-packages/urllib3/connection.py", line 244, in request
+    super(HTTPConnection, self).request(method, url, body=body, headers=headers)
+  File "/usr/lib/python3.12/http/client.py", line 1356, in request
+    self._send_request(method, url, body, headers, encode_chunked)
+  File "/usr/lib/python3.12/http/client.py", line 1402, in _send_request
+    self.endheaders(body, encode_chunked=encode_chunked)
+  File "/usr/lib/python3.12/http/client.py", line 1351, in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+  File "/usr/lib/python3.12/http/client.py", line 1111, in _send_output
+    self.send(msg)
+  File "/usr/lib/python3.12/http/client.py", line 1055, in send
+    self.connect()
+  File "/home/x-phuong/Code/A2A/venv/lib/python3.12/site-packages/urllib3/connection.py", line 205, in connect
+    conn = self._new_conn()
+           ^^^^^^^^^^^^^^^^
+  File "/home/x-phuong/Code/A2A/venv/lib/python3.12/site-packages/urllib3/connection.py", line 186, in _new_conn
+    raise NewConnectionError(
+urllib3.exceptions.NewConnectionError: <urllib3.connection.HTTPConnection object at 0x7af1a54f85c0>: Failed to establish a new connection: [Errno 111] Connection refused
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/x-phuong/Code/A2A/agent.py", line 404, in gen_agent
+    if not es.indices.exists(index=self.index_elastic):
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/x-phuong/Code/A2A/venv/lib/python3.12/site-packages/elasticsearch/client/utils.py", line 347, in _wrapped
+    return func(*args, params=params, headers=headers, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/x-phuong/Code/A2A/venv/lib/python3.12/site-packages/elasticsearch/client/indices.py", line 371, in exists
+    return self.transport.perform_request(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/x-phuong/Code/A2A/venv/lib/python3.12/site-packages/elasticsearch/transport.py", line 417, in perform_request
+    self._do_verify_elasticsearch(headers=headers, timeout=timeout)
+  File "/home/x-phuong/Code/A2A/venv/lib/python3.12/site-packages/elasticsearch/transport.py", line 606, in _do_verify_elasticsearch
+    raise error
+  File "/home/x-phuong/Code/A2A/venv/lib/python3.12/site-packages/elasticsearch/transport.py", line 569, in _do_verify_elasticsearch
+    _, info_headers, info_response = conn.perform_request(
+                                     ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/x-phuong/Code/A2A/venv/lib/python3.12/site-packages/elasticsearch/connection/http_urllib3.py", line 280, in perform_request
+    raise ConnectionError("N/A", str(e), e)
+elasticsearch.exceptions.ConnectionError: ConnectionError(<urllib3.connection.HTTPConnection object at 0x7af1a54f85c0>: Failed to establish a new connection: [Errno 111] Connection refused) caused by: NewConnectionError(<urllib3.connection.HTTPConnection object at 0x7af1a54f85c0>: Failed to establish a new connection: [Errno 111] Connection refused)
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/x-phuong/Code/A2A/services/chat_service.py", line 18, in init
+    self.agent = await AgentCustom.create(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/x-phuong/Code/A2A/agent.py", line 181, in create
+    self.agent = self.gen_agent()
+                 ^^^^^^^^^^^^^^^^
+  File "/home/x-phuong/Code/A2A/agent.py", line 443, in gen_agent
+    raise ValueError(f"Elasticsearch connection error: {e}")
+ValueError: Elasticsearch connection error: ConnectionError(<urllib3.connection.HTTPConnection object at 0x7af1a54f85c0>: Failed to establish a new connection: [Errno 111] Connection refused) caused by: NewConnectionError(<urllib3.connection.HTTPConnection object at 0x7af1a54f85c0>: Failed to establish a new connection: [Errno 111] Connection refused)
+INFO:     Application startup complete.
+Public url ngrok https://5aeebaccc8d3.ngrok-free.app
+--- Bắt đầu quét 2 agent URLs ---
+ Lỗi khi kết nối tới http://localhost:10000/a2a/agent1/: HTTP Error 503: Network communication error fetching agent card from http://localhost:10000/a2a/agent1/.well-known/agent-card.json: All connection attempts failed
+ Lỗi khi kết nối tới http://localhost:10000/a2a/agent2/: HTTP Error 503: Network communication error fetching agent card from http://localhost:10000/a2a/agent2/.well-known/agent-card.json: All connection attempts failed
+Connecting to Elasticsearch at http://localhost:9200
+Webhook registered
+INFO:     127.0.0.1:60184 - "GET /a2a/agent2/.well-known/agent-card.json HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60184 - "GET /favicon.ico HTTP/1.1" 404 Not Found
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [37968]
+INFO:     Stopping reloader process [37966]

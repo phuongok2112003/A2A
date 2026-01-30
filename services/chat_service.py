@@ -14,6 +14,7 @@ class ChatService:
             settings.BASE_URL + settings.AGENT_1_PATH,
             settings.BASE_URL + settings.AGENT_2_PATH,
         ]
+        print("Chạy vao trong agent chinh")
 
         self.agent = await AgentCustom.create(
             access_agent_urls=access_agent_urls,

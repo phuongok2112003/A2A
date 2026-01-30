@@ -65,4 +65,15 @@ def start_ngrok_and_get_url(
     proc.terminate()
     raise RuntimeError("Ngrok did not expose a tunnel in time")
 
-ngrok_tunel_zalo_bot_webhook = start_ngrok_and_get_url(port = 10000)
+
+ngrok_tunel_zalo_bot_webhook: NgrokTunnel | None = None
+
+async def init_ngrok(port: int) -> str:
+    global ngrok_tunel_zalo_bot_webhook
+
+    if ngrok_tunel_zalo_bot_webhook:
+        return ngrok_tunel_zalo_bot_webhook
+
+    ngrok_tunel_zalo_bot_webhook = start_ngrok_and_get_url(port)
+    return ngrok_tunel_zalo_bot_webhook.public_url
+

@@ -79,7 +79,10 @@ start_uvicorn() {
 
   nohup bash -c "
     cd '$PROJECT_ROOT' &&
-    $UVICORN_CMD
+    '$l/venv/bin/python' -m uvicorn main:app \
+      --host 0.0.0.0 \
+      --port ${PORT} \
+      --reload
   " >>"$LOG_FILE" 2>&1 &
 
   local pid=$!

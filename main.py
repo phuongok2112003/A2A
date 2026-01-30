@@ -9,10 +9,11 @@ from contextlib import asynccontextmanager
 from Agent_Client.client_a2a import create_client_for_agent, send_to_server_agent
 import json
 import zalo_bot
-from until.webhook_zalo_bot import ngrok_tunel_zalo_bot_webhook
+from until.webhook_zalo_bot import init_ngrok
 from services.chat_service import ChatService
 import asyncio
 from until.enum import EventName
+
 
 bot_zalo = zalo_bot.Bot(settings.BOOT_ZALO_TOKEN)
 
@@ -27,8 +28,9 @@ async def lifespan(app: FastAPI):
     app.mount(settings.AGENT_2_PATH, app.state.agent2_app)
 
     try:
+        public_url = await init_ngrok(10000)
         await bot_zalo._set_webhook_async(
-            url=f"{ngrok_tunel_zalo_bot_webhook.public_url}/zalo/webhook",
+            url=f"{public_url}/zalo/webhook",
             secret_token=settings.SECRET_TOKEN_WEBHOOK_ZALO,
         )
         print("Webhook registered")
