@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from agent import AgentCustom
 from config.settings import settings
-from tools.tool_common import tools, interrupt_on_tool
+from common.tool_common import tools, interrupt_on_tool
 from typing import List
 from until.until import download_image
 
@@ -35,6 +35,6 @@ class ChatService:
             user_input_text=user_input_text,
             context_id=context_id,
             user_id=user_id,
-            user_input_photo= await download_image(user_input_photo) if user_input_photo else None
+            user_input_photo= user_input_photo if user_input_photo else None
         ):
             return res

@@ -76,8 +76,8 @@ async def zalo_webhook(req: Request):
         return {"status": "ok"}
     else:
         res = await chat_service.process_chat(user_id=chat_id, context_id="zalo_bot",
-                                              user_input_text= payload["message"]["text"] if event_name==EventName.Text else None,
-                                              user_input_photo = payload["message"]["photo_url"])
+                                              user_input_text= payload["message"]["text"] if event_name==EventName.Text.value else None,
+                                              user_input_photo = payload["message"]["photo_url"] if event_name==EventName.Image.value else None)
 
         print(message_id)
 

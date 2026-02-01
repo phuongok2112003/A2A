@@ -48,3 +48,4 @@ GitPython==3.1.46
 
 langchain-pinecone>=0.2.0
 python-zalo-bot
+langchain_ollama

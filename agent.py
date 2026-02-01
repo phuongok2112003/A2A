@@ -2,7 +2,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from langchain_ollama import ChatOllama
 from langchain.agents import create_agent
-from deepagents import create_deep_agent
+from common.create_agent import create_deep_agent
 from langchain_core.tools import tool
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from langgraph.checkpoint.memory import MemorySaver
@@ -33,9 +33,11 @@ from langchain.agents.middleware import (
     LLMToolSelectorMiddleware,
     ShellToolMiddleware,
     ModelFallbackMiddleware,
+    
 )
+from deepagents.middleware.subagents import CompiledSubAgent, SubAgent
 from dataclasses import dataclass
-from middleware_custom import MiddlewareCustom
+from common.middleware_custom import MiddlewareCustom
 from until.check_os_name import build_shell_middleware
 from langgraph.types import Command
 from langchain.agents.middleware.human_in_the_loop import HITLRequest, Decision
@@ -46,6 +48,8 @@ from schemas.base import ServerAgentRequest
 from until.convert import dict_to_string, string_to_dict
 from until.process_mes import process_mess_interrupt
 from memory.memory_store import PineconeMemoryStore
+from common.create_sub_agent import list_sub_agents
+from common.export_models_llm import ModelsLLM
 # ===============================
 # System Prompt
 # ===============================
@@ -124,6 +128,9 @@ SAFETY
 - Nếu get_long_memory không trả về gì, nói rõ.
 - Không tiết lộ nội bộ hệ thống.
 
+#IMPORTANT: For complex tasks, delegate to your subagents using the task() tool.
+    This keeps your context clean and improves results.
+
 """
 
 @dataclass
@@ -161,6 +168,7 @@ class AgentCustom:
         self.tools = tools if tools else []
         self.agent_registry = {}
         self.agent: CompiledStateGraph = None
+        self.sub_agents: list[SubAgent | CompiledSubAgent] | None = None,
         self.max_tokens_before_summary = max_tokens_before_summary
         self.recursion_limit = recursion_limit
         self.interrupt_on_tool = {}
@@ -172,13 +180,14 @@ class AgentCustom:
     @classmethod
     async def create(cls, access_agent_urls: List[str] = [], **kwargs):
         self = cls(**kwargs)
+        self.sub_agents = list_sub_agents
 
-        if access_agent_urls:
-            await self._discover_and_register_agents(access_agent_urls)
+        # if access_agent_urls:
+        #     await self._discover_and_register_agents(access_agent_urls)
 
-            if self.agent_registry:
-                dispatcher_tool = self._create_dispatcher_tool()
-                self.tools.append(dispatcher_tool)
+        #     if self.agent_registry:
+        #         dispatcher_tool = self._create_dispatcher_tool()
+        #         self.tools.append(dispatcher_tool)
 
         self.agent = self.gen_agent()
 
@@ -375,6 +384,7 @@ class AgentCustom:
             coroutine=call_agent_impl,
             name="call_external_agent",
             description=f"""
+            Chỉ dùng để gọi các AGENT BÊN NGOÀI qua URL. KHÔNG dùng cho subagent local như process-image-agent ...v.v.
             Sử dụng công cụ này để kết nối và gửi yêu cầu tới các Agent chuyên gia khác.
             Dựa vào danh sách dưới đây để chọn 'agent_name' phù hợp nhất với yêu cầu của người dùng.
             
@@ -477,42 +487,48 @@ class AgentCustom:
 
         store = PineconeMemoryStore(api_key=settings.PINECONE_KEY)
 
-        agent = create_agent(
-            model=llm_ollama_kimi,
+        models={
+            "primary_model":ModelsLLM.llm_ollama_gpt,
+            "summary_model": ModelsLLM.llm_ollama_gpt
+        }
+
+        agent = create_deep_agent(
+            models=models,
             tools=self.tools,
             system_prompt=self.system_prompt,
             checkpointer=checkpointer,
             store=store,
             name="gemini-agent",
             debug=True,
+            subagents=self.sub_agents,
             context_schema=Context,
-            middleware=[
-                SummarizationMiddleware(
-                    max_tokens_before_summary=self.max_tokens_before_summary,
-                    model=llm_ollama_gpt,
-                ),
-                ModelCallLimitMiddleware(
-                    run_limit=5, thread_limit=100, exit_behavior="end"
-                ),
-                ToolCallLimitMiddleware(
-                    run_limit=10, thread_limit=10, exit_behavior="end"
-                ),
-                PIIMiddleware(
-                    "email",
-                    strategy="redact",
-                    apply_to_input=True,
-                    apply_to_output=True,
-                    apply_to_tool_results=True,
-                ),
-                PIIMiddleware("credit_card", strategy="block"),
-                PIIMiddleware("ip", strategy="hash"),
-                # PIIMiddleware("url", strategy="redact", apply_to_output=True),
-                TodoListMiddleware(),
-                # build_shell_middleware(),
-                HumanInTheLoopMiddleware(interrupt_on=self.interrupt_on_tool),
-                ModelFallbackMiddleware(llm_ollama_kimi)
-                # LLMToolSelectorMiddleware(model = llm_gemini, max_tools=5, always_include=["call_external_agent"]),
-            ],
+            # middleware=[
+            #     SummarizationMiddleware(
+            #         max_tokens_before_summary=self.max_tokens_before_summary,
+            #         model=llm_ollama_gpt,
+            #     ),
+            #     ModelCallLimitMiddleware(
+            #         run_limit=5, thread_limit=100, exit_behavior="end"
+            #     ),
+            #     ToolCallLimitMiddleware(
+            #         run_limit=10, thread_limit=10, exit_behavior="end"
+            #     ),
+            #     PIIMiddleware(
+            #         "email",
+            #         strategy="redact",
+            #         apply_to_input=True,
+            #         apply_to_output=True,
+            #         apply_to_tool_results=True,
+            #     ),
+            #     PIIMiddleware("credit_card", strategy="block"),
+            #     PIIMiddleware("ip", strategy="hash"),
+            #     # PIIMiddleware("url", strategy="redact", apply_to_output=True),
+            #     TodoListMiddleware(),
+            #     # build_shell_middleware(),
+            #     HumanInTheLoopMiddleware(interrupt_on=self.interrupt_on_tool),
+            #     # ModelFallbackMiddleware(llm_ollama_kimi.bind_tools([]))
+            #     # LLMToolSelectorMiddleware(model = llm_gemini, max_tools=5, always_include=["call_external_agent"]),
+            # ],
         )
         print("Type của agent: ",type(agent))
 
@@ -541,7 +557,7 @@ class AgentCustom:
             log.error(f"Lỗi khi chạy agent: {e}  {traceback.format_exc()}")
             return f"Lỗi khi chạy agent: {e}"
 
-    async def run_astream(self, context_id: str, user_id:str =None, user_input_text: str = None, user_input_photo: bytes  = None):
+    async def run_astream(self, context_id: str, user_id:str =None, user_input_text: str = None, user_input_photo: str  = None):
         config = {
             "configurable": {"thread_id": context_id},
             "recursion_limit": self.recursion_limit,
@@ -549,26 +565,23 @@ class AgentCustom:
 
         content: list[dict] = []
 
-    
-        content.append(
-            {
-                "type": "text",
-                "text": user_input_text if user_input_text else "Miêu tả bức ảnh này",
-            }
-    
-        )
-        if user_input_photo:
-            image_b64 = base64.b64encode(user_input_photo).decode("utf-8")
-
+        if user_input_text:
             content.append(
                 {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:image/jpeg;base64,{image_b64}"
-                    }
+                    "type": "text",
+                    "text": user_input_text ,
                 }
-                
+        
             )
+        if user_input_photo:
+           
+           content.append(
+                {
+                    "type": "text",
+                    "text": f"Miêu tả bức ảnh này.{user_input_photo}",
+                }
+    
+        )
 
         if not content:
             raise ValueError("run_astream requires at least text or photo input")

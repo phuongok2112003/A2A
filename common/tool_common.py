@@ -4,8 +4,17 @@ from schemas.base import RunShellArgs, SaveMemoryArgs, LongMemory
 from langgraph.store.base import PutOp, SearchOp
 import uuid
 from memory.memory_store import PineconeMemoryStore
-from typing import Literal
+from typing import Literal, Annotated, TypedDict
 from datetime import datetime
+from tavily import TavilyClient
+from config.settings import settings
+from PIL import Image
+import base64
+from io import BytesIO
+import requests
+from pathlib import Path
+from langchain_core.messages import HumanMessage
+from common.export_models_llm import ModelsLLM
 
 
 @tool(args_schema=RunShellArgs)
@@ -184,7 +193,7 @@ def internet_search(
     topic: Literal["general", "news", "finance"] = "general",
     include_raw_content: bool = False,
 ):
-    
+    tavily_client = TavilyClient(api_key=settings.TAVILY_API_KEY)
     return tavily_client.search(
         query,
         max_results=max_results,
@@ -192,8 +201,66 @@ def internet_search(
         topic=topic,
     )
 
+@tool
+async def load_image(
+    source: Annotated[
+        str,
+        "Có thể là: http URL, https URL, hoặc đường dẫn file local (từ filesystem của agent)"
+    ],
+    detail: Literal["low", "high", "auto"] = "auto"
+) -> str:
+    """
+    Load và encode ảnh thành base64 để multimodal model sử dụng.
+    Trả về string base64 đã sẵn sàng cho message content.
+    """
 
-tools = [save_memory, run_shell, get_long_memory, internet_search]  ### Attach list tool for agent
+    print("Chạy vào load image")
+    try:
+        if source.startswith(("http://", "https://")):
+            response = requests.get(source, timeout=10)
+            response.raise_for_status()
+            img_data = response.content
+        else:
+            # Giả sử DeepAgents có filesystem → đọc từ path ảo
+            path = Path(source)
+            if not path.is_file():
+                raise FileNotFoundError(f"Không tìm thấy file: {source}")
+            img_data = path.read_bytes()
+
+        # Optional: resize để tiết kiệm token nếu cần
+        img = Image.open(BytesIO(img_data))
+        if img.size[0] > 1344 or img.size[1] > 1344:  # ví dụ giới hạn
+            img.thumbnail((1344, 1344))
+            buffer = BytesIO()
+            img.save(buffer, format=img.format or "PNG")
+            img_data = buffer.getvalue()
+
+        b64 = base64.b64encode(img_data).decode("utf-8")
+        mime = f"image/{img.format.lower() if img.format else 'jpeg'}"
+
+        print("Nhay vao day roi")
+
+        msg = HumanMessage(
+            content=[
+                {"type": "text", "text": "Ảnh này có gì?"},
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/png;base64,{b64}"
+                    },
+                },
+            ]
+        )
+        result = await ModelsLLM.llm_ollama_kimi.ainvoke([msg])
+        return f"Bức ảnh miêu tả {result.content} " 
+
+    except Exception as e:
+        return f"Lỗi khi load ảnh: {str(e)}. Vui lòng kiểm tra URL/path."
+
+
+
+
+tools = [save_memory, run_shell, get_long_memory,]  ### Attach list tool for agent
 interrupt_on_tool = [
     run_shell
 ]  ### Attach list tool for agent to interruput when call tool
