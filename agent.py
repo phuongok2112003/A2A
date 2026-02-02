@@ -18,10 +18,13 @@ from a2a.types import Message, TextPart, DataPart, FilePart
 from uuid import uuid4
 import mimetypes
 import os
+from deepagents.backends import CompositeBackend, StateBackend, StoreBackend
 from a2a.types import FileWithBytes
 from config.logger import log
 import traceback
 import base64
+from langgraph.store.memory import InMemoryStore
+from langchain.tools import ToolRuntime
 from langgraph.graph.state import CompiledStateGraph
 from langchain.agents.middleware import (
     SummarizationMiddleware,
@@ -70,27 +73,33 @@ Mục tiêu chính:
 
 ============================
 LONG-TERM MEMORY STRATEGY
-============================
+========================
 
-Bạn có hai công cụ:
-- save_memory: lưu thông tin bền vững về người dùng (sở thích, profile, công nghệ ưa thích, dự án đang làm, quyết định quan trọng).
-- get_long_memory: truy xuất thông tin đã lưu trước đó.
+You have access to a vector-based long-term memory store.
 
-Khi nào cần gọi get_long_memory:
-- Câu hỏi về sở thích, thói quen, lựa chọn công nghệ.
-- So sánh dựa trên lịch sử người dùng.
-- Nhắc lại sự kiện trong quá khứ.
-- “Tôi đã từng…”, “Tôi thích…”, “Lần trước…”, “Bạn nhớ không…”.
+All persistent memory MUST be written using store operations under:
 
-Quy trình khi dùng get_long_memory:
-1. Viết lại câu hỏi thành semantic query ngắn gọn, trung lập.
-2. Loại bỏ từ dư thừa.
-3. Giữ lại thực thể chính (công nghệ, lựa chọn, dự án, preference).
-4. Nếu không chắc → query rộng.
-5. Xác định category:
-   - semantic → sở thích, profile ổn định.
-   - episodic → sự kiện, hành động đã xảy ra.
-6. Giới hạn số kết quả cần thiết (limit 3–5).
+/memories/user/{user_id}/
+
+Rules:
+
+- When user reveals stable personal info → store it.
+- Always scope memory to the current user.
+- Never store to global namespace unless explicitly told.
+
+Do NOT use filesystem paths.
+Do NOT mention files.
+
+Examples:
+
+Put:
+namespace: ("memories","user","123")
+key: "profile:name"
+value: {"text":"User name is PhuongNX"}
+
+Search:
+namespace_prefix: ("memories","user","123")
+query: "user name"
 
 ============================
 TOOL USAGE DISCIPLINE
@@ -182,12 +191,12 @@ class AgentCustom:
         self = cls(**kwargs)
         self.sub_agents = list_sub_agents
 
-        # if access_agent_urls:
-        #     await self._discover_and_register_agents(access_agent_urls)
+        if access_agent_urls:
+            await self._discover_and_register_agents(access_agent_urls)
 
-        #     if self.agent_registry:
-        #         dispatcher_tool = self._create_dispatcher_tool()
-        #         self.tools.append(dispatcher_tool)
+            if self.agent_registry:
+                dispatcher_tool = self._create_dispatcher_tool()
+                self.tools.append(dispatcher_tool)
 
         self.agent = self.gen_agent()
 
@@ -486,12 +495,25 @@ class AgentCustom:
         checkpointer = ElasticsearchCheckpointSaver(es=es, index=self.index_elastic)
 
         store = PineconeMemoryStore(api_key=settings.PINECONE_KEY)
+        # store = InMemoryStore()
+
 
         models={
             "primary_model":ModelsLLM.llm_ollama_gpt,
             "summary_model": ModelsLLM.llm_ollama_gpt
         }
 
+
+        def make_backend(rt: ToolRuntime):
+            user_id = rt.context.user_id  # Từ Context(user_id)
+
+            print(f"=============================user id is {user_id}===========================")
+            return CompositeBackend(
+                default=StateBackend(rt),
+                routes={
+                    f"/memories/user/{user_id}/": StoreBackend(rt)  # Per-user namespace!
+                }
+            )
         agent = create_deep_agent(
             models=models,
             tools=self.tools,
@@ -502,6 +524,7 @@ class AgentCustom:
             debug=True,
             subagents=self.sub_agents,
             context_schema=Context,
+            backend= make_backend,
             # middleware=[
             #     SummarizationMiddleware(
             #         max_tokens_before_summary=self.max_tokens_before_summary,

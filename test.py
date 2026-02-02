@@ -1,13 +1,13 @@
 from agent import AgentCustom
 from config.settings import settings
-from tools.tool_common import tools, interrupt_on_tool
+from common.tool_common import tools, interrupt_on_tool
 
 access_agent_urls = [
     settings.BASE_URL + settings.AGENT_1_PATH, settings.BASE_URL + settings.AGENT_2_PATH,
 ]
 async def main():
 
-    context_id = "fresh_conversation_008"  # Sử dụng một context_id cố định cho ví dụ này
+    context_id = "fresh_conversation_0g08"  # Sử dụng một context_id cố định cho ví dụ này
     user_id = "user_124"
     agent = await AgentCustom.create(
             access_agent_urls=access_agent_urls,
@@ -25,7 +25,7 @@ async def main():
     #    print(res)
 
     async for res in agent.run_astream(
-        user_input=user_input,
+        user_input_text=user_input,
         context_id=context_id,
         user_id=user_id
     ):

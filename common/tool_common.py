@@ -55,136 +55,136 @@ def run_shell(command: str, timeout: int = 30) -> str:
         return f"[EXCEPTION] {e}"
 
 
-@tool(
-    args_schema=SaveMemoryArgs,
-    description="Tự động lưu thông tin quan trọng của người dùng hoặc phiên làm việc vào long-term memory store nếu bạn đánh giá nó là thông "
-    "tin cần thiết để lưu (Sở thích, Profile) hoặc sự kiện đáng nhớ."
-    "Những thông tin này thường sẽ phải có nội dung xoay quanh người dùng giải sử như: các thông tin cơ bản về người dùng, thói quen, những chủ để quan tâm ...",
-)
-async def save_memory(
-    runtime: ToolRuntime,
-    text: str,
-    namespace: str = "general",  # Namespace con (vd: user_profile, work)
-    category: Literal["semantic", "episodic"] = "semantic",
-    tags: list[str] = [],
-    metadata: dict | None = None,
-):
-    """
-    Save important long-term memory.
-    """
-    store: PineconeMemoryStore = runtime.store
-    user_id = runtime.context.user_id  # ID người dùng (vd: u-123)
+# @tool(
+#     args_schema=SaveMemoryArgs,
+#     description="Tự động lưu thông tin quan trọng của người dùng hoặc phiên làm việc vào long-term memory store nếu bạn đánh giá nó là thông "
+#     "tin cần thiết để lưu (Sở thích, Profile) hoặc sự kiện đáng nhớ."
+#     "Những thông tin này thường sẽ phải có nội dung xoay quanh người dùng giải sử như: các thông tin cơ bản về người dùng, thói quen, những chủ để quan tâm ...",
+# )
+# async def save_memory(
+#     runtime: ToolRuntime,
+#     text: str,
+#     namespace: str = "general",  # Namespace con (vd: user_profile, work)
+#     category: Literal["semantic", "episodic"] = "semantic",
+#     tags: list[str] = [],
+#     metadata: dict | None = None,
+# ):
+#     """
+#     Save important long-term memory.
+#     """
+#     store: PineconeMemoryStore = runtime.store
+#     user_id = runtime.context.user_id  # ID người dùng (vd: u-123)
 
-    # 1. Tạo ID duy nhất cho ký ức này (QUAN TRỌNG)
-    # Nếu dùng user_id làm key, ký ức mới sẽ đè ký ức cũ -> Mất dữ liệu.
-    memory_id = str(uuid.uuid4())
+#     # 1. Tạo ID duy nhất cho ký ức này (QUAN TRỌNG)
+#     # Nếu dùng user_id làm key, ký ức mới sẽ đè ký ức cũ -> Mất dữ liệu.
+#     memory_id = str(uuid.uuid4())
 
-    # 2. Xây dựng Metadata
-    final_metadata = metadata or {}
-    final_metadata.update(
-        {
-            "category": category,
-            "tags": tags,
-            "created_at": datetime.now().isoformat(),
-            "sub_namespace": namespace,  # Lưu tên namespace con vào metadata để tiện lọc
-        }
-    )
+#     # 2. Xây dựng Metadata
+#     final_metadata = metadata or {}
+#     final_metadata.update(
+#         {
+#             "category": category,
+#             "tags": tags,
+#             "created_at": datetime.now().isoformat(),
+#             "sub_namespace": namespace,  # Lưu tên namespace con vào metadata để tiện lọc
+#         }
+#     )
 
-    value = {"text": text, "metadata": final_metadata}
+#     value = {"text": text, "metadata": final_metadata}
 
-    await store.abatch([PutOp(namespace=(user_id,), key=memory_id, value=value)])
+#     await store.abatch([PutOp(namespace=(user_id,), key=memory_id, value=value)])
 
-    return {"status": "saved", "id": memory_id, "category": category}
+#     return {"status": "saved", "id": memory_id, "category": category}
 
 
-@tool(
-    description="Tự động truy xuất ký ức dài hạn nếu bạn nghĩ nó là cần thiết. Dùng khi cần nhớ lại thông tin user, thói quen hoặc sự kiện trong quá khứ để trả lời tốt hơn.",
-    args_schema=LongMemory,
-)
-async def get_long_memory(
-    runtime: ToolRuntime,
-    query: str,
-    category: Literal["all", "semantic", "episodic"] = "all",
-    limit: int = 5,
-)-> dict:
-    """
-    Search long-term memory.
-    """
-    user_id = runtime.context.user_id
-    store: PineconeMemoryStore = runtime.store
-    print(
-        f"++++++++++++++++++chay vafo get long memroy roio ne: {query}+++++++++{category}+++++++++++++++++++++++++++++"
-    )
+# @tool(
+#     description="Tự động truy xuất ký ức dài hạn nếu bạn nghĩ nó là cần thiết. Dùng khi cần nhớ lại thông tin user, thói quen hoặc sự kiện trong quá khứ để trả lời tốt hơn.",
+#     args_schema=LongMemory,
+# )
+# async def get_long_memory(
+#     runtime: ToolRuntime,
+#     query: str,
+#     category: Literal["all", "semantic", "episodic"] = "all",
+#     limit: int = 5,
+# )-> dict:
+#     """
+#     Search long-term memory.
+#     """
+#     user_id = runtime.context.user_id
+#     store: PineconeMemoryStore = runtime.store
+#     print(
+#         f"++++++++++++++++++chay vafo get long memroy roio ne: {query}+++++++++{category}+++++++++++++++++++++++++++++"
+#     )
 
-    # 1. Namespace gốc cần tìm (phải khớp với lúc save)
-    namespace_path = (user_id,)
+#     # 1. Namespace gốc cần tìm (phải khớp với lúc save)
+#     namespace_path = (user_id,)
 
-    # 2. Tạo bộ lọc (Filter)
-    filter_dict = {}
-    if category != "all":
-        filter_dict["category"] = category
+#     # 2. Tạo bộ lọc (Filter)
+#     filter_dict = {}
+#     if category != "all":
+#         filter_dict["category"] = category
 
-    # Ví dụ: Nếu muốn tìm tag cụ thể, có thể mở rộng thêm logic ở đây
-    # if "python" in query.lower(): filter_dict["tags"] = {"$in": ["python"]}
+#     # Ví dụ: Nếu muốn tìm tag cụ thể, có thể mở rộng thêm logic ở đây
+#     # if "python" in query.lower(): filter_dict["tags"] = {"$in": ["python"]}
 
-    # 3. Search
-    # results = await store.asearch(
-    #     namespace_prefix=namespace_path,
-    #     query=query,
-    #     filter=filter_dict if filter_dict else None,
-    #     limit=limit,
-    # )
-    results = await store.abatch(
-        [
-            SearchOp(
-                namespace_prefix=namespace_path,
-                query=query,
-                filter=filter_dict if filter_dict else None,
-                limit=limit,
-            )
-        ]
-    )
+#     # 3. Search
+#     # results = await store.asearch(
+#     #     namespace_prefix=namespace_path,
+#     #     query=query,
+#     #     filter=filter_dict if filter_dict else None,
+#     #     limit=limit,
+#     # )
+#     results = await store.abatch(
+#         [
+#             SearchOp(
+#                 namespace_prefix=namespace_path,
+#                 query=query,
+#                 filter=filter_dict if filter_dict else None,
+#                 limit=limit,
+#             )
+#         ]
+#     )
 
-    if not results or not results[0]:
-        return {
-            "memories": [],
-            "raw": [],
-        }
+#     if not results or not results[0]:
+#         return {
+#             "memories": [],
+#             "raw": [],
+#         }
 
-    search_items = results[0]
+#     search_items = results[0]
 
-    formatted_memories: list[str] = []
-    raw_items: list[dict] = []
+#     formatted_memories: list[str] = []
+#     raw_items: list[dict] = []
 
-    for item in search_items:
-        val = item.value if isinstance(item.value, dict) else {}
-        text = val.get("text", "")
-        meta = val.get("metadata", {})
+#     for item in search_items:
+#         val = item.value if isinstance(item.value, dict) else {}
+#         text = val.get("text", "")
+#         meta = val.get("metadata", {})
 
-        entry = (
-            f"- [{meta.get('created_at','N/A')}] "
-            f"[{meta.get('category','INFO').upper()}] "
-            f"{text} "
-            f"(Tags: {meta.get('tags', [])})"
-        )
+#         entry = (
+#             f"- [{meta.get('created_at','N/A')}] "
+#             f"[{meta.get('category','INFO').upper()}] "
+#             f"{text} "
+#             f"(Tags: {meta.get('tags', [])})"
+#         )
 
-        formatted_memories.append(entry)
+#         formatted_memories.append(entry)
 
-        raw_items.append(
-            {
-                "text": text,
-                "metadata": meta,
-                "score": item.score,
-                "key": item.key,
-                "namespace": item.namespace,
-            }
-        )
+#         raw_items.append(
+#             {
+#                 "text": text,
+#                 "metadata": meta,
+#                 "score": item.score,
+#                 "key": item.key,
+#                 "namespace": item.namespace,
+#             }
+#         )
    
-    print(f"raw {raw_items} \n formatted_memories: {formatted_memories} ")
-    return {
-        "memories": formatted_memories,
-        "raw": raw_items,
-    }
+#     print(f"raw {raw_items} \n formatted_memories: {formatted_memories} ")
+#     return {
+#         "memories": formatted_memories,
+#         "raw": raw_items,
+#     }
 
 @tool(description="Run a web search")
 def internet_search(
@@ -260,7 +260,7 @@ async def load_image(
 
 
 
-tools = [save_memory, run_shell, get_long_memory,]  ### Attach list tool for agent
+tools = [ run_shell,]  ### Attach list tool for agent
 interrupt_on_tool = [
     run_shell
 ]  ### Attach list tool for agent to interruput when call tool
