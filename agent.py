@@ -482,41 +482,6 @@ class AgentCustom:
         # Memory cho mỗi thread (mỗi context_id)
         # checkpointer = MemorySaver()
 
-        llm_gemini = ChatGoogleGenerativeAI(
-            model="models/gemini-2.0-flash",
-            temperature=0.2,
-            google_api_key=settings.GOOGLE_A2A_API_KEY,
-        )
-        llm_openai = ChatOpenAI(
-            model_name="gpt-oss:latest",
-            temperature=0.2,
-            openai_api_key=settings.OPENAI_A2A_API_KEY,
-            openai_api_base="http://localhost:11434/v1",
-        )
-        llm_ollama_gpt = ChatOllama(
-            model="gpt-oss:120b-cloud",
-            base_url="https://ollama.com",
-            client_kwargs={
-                "headers": {
-                    "Authorization": f"Bearer {settings.OLLAMA_KEY}"
-                },
-                "timeout": 120,
-            },
-            temperature=0,
-        
-        )
-        llm_ollama_kimi = ChatOllama(
-            model="kimi-k2.5:cloud",
-            base_url="https://ollama.com",
-            client_kwargs={
-                "headers": {
-                    "Authorization": f"Bearer {settings.OLLAMA_KEY}"
-                },
-                "timeout": 120,
-            },
-            temperature=0,
-        
-        )
         
         
         checkpointer = ElasticsearchCheckpointSaver(es=es, index=self.index_elastic)
@@ -535,7 +500,7 @@ class AgentCustom:
             user_id = rt.context.user_id  # Từ Context(user_id)
 
             print(f"=============================user id is {user_id}===========================")
-            prefix = f"/memories/user/{user_id}/"
+            prefix = f"/memories/user/"
 
             print(f"prefix {prefix}")
             return CompositeBackend(
@@ -622,7 +587,7 @@ class AgentCustom:
             content.append(
                 {
                     "type": "text",
-                    "text": user_input_text + f" với user_id {user_id}",
+                    "text": user_input_text ,
                 }
         
             )
@@ -631,7 +596,7 @@ class AgentCustom:
            content.append(
                 {
                     "type": "text",
-                    "text": f"Miêu tả bức ảnh này.{user_input_photo} với user_id {user_id}",
+                    "text": f"Miêu tả bức ảnh này: {user_input_photo}",
                 }
     
         )

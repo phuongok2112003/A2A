@@ -57,6 +57,11 @@ class CustomsStoreBackend(BackendProtocol):
             raise ValueError(msg)
         return store
 
+    def _get_context(self):
+        context = self.runtime.context
+        return context
+
+
     def _get_namespace(self) -> tuple[str, ...]:
         """Get the namespace for store operations.
 
@@ -195,6 +200,7 @@ class CustomsStoreBackend(BackendProtocol):
         """
         store = self._get_store()
         namespace = self._get_namespace()
+        
 
         # Retrieve all items and filter by path prefix locally to avoid
         # coupling to store-specific filter semantics
