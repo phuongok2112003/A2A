@@ -269,4 +269,4 @@ def create_deep_agent(
         debug=debug,
         name=name,
         cache=cache,
-    ).with_config({"recursion_limit": 1000})
+    ).with_config({"recursion_limit": 20})

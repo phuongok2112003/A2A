@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from typing import Optional, Dict, Any, List, Literal
 from a2a.types import AgentSkill
 from a2a.types import Message
@@ -56,3 +56,17 @@ class LongMemory(BaseModel):
                     "- 'semantic': Lưu kiến thức, sự thật, thông tin profile (VD: User thích ăn phở, User là dev). "
                     "- 'episodic': Lưu trải nghiệm, sự kiện cụ thể đã xảy ra (VD: Hôm qua chạy lệnh git bị lỗi)."
     )
+class Quesion(BaseModel):
+    user_input_text:str | None = None
+    user_input_photo:str | None = None
+    user_id:str
+    context_id:str
+
+    @model_validator(mode='after')
+    def validate_at_least_one_input(self):
+        """Ensure at least one of text or photo is provided"""
+        if not self.user_input_text and not self.user_input_photo:
+            raise ValueError(
+                'Phải cung cấp user_input_text hoặc user_input_photo (hoặc cả hai)'
+            )
+        return self

@@ -7,7 +7,7 @@ access_agent_urls = [
 ]
 async def main():
 
-    context_id = "fresh_conversation_0g08"  # Sử dụng một context_id cố định cho ví dụ này
+    context_id = "fresh_conversation_008"  # Sử dụng một context_id cố định cho ví dụ này
     user_id = "user_124"
     agent = await AgentCustom.create(
             access_agent_urls=access_agent_urls,

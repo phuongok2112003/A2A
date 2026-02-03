@@ -13,6 +13,7 @@ from until.webhook_zalo_bot import init_ngrok
 from services.chat_service import ChatService
 import asyncio
 from until.enum import EventName
+from schemas.base import Quesion
 
 
 bot_zalo = zalo_bot.Bot(settings.BOOT_ZALO_TOKEN)
@@ -117,7 +118,14 @@ async def call_agent_1():
 
     return {"message": "This is a call to Agent 1"}
 
+@app.post("/quesion")
+async def process_question(quesion: Quesion):
+    chat_service = ChatService()
+    await chat_service.init()
+    res = await chat_service.process_chat(user_id=quesion.user_id, context_id=quesion.context_id,
+                                              user_input_text= quesion.user_input_text,
+                                              user_input_photo = quesion.user_input_photo)
 
-
+    return res
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=10000, log_level="info", reload=True)

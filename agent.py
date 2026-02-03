@@ -19,6 +19,7 @@ from uuid import uuid4
 import mimetypes
 import os
 from deepagents.backends import CompositeBackend, StateBackend, StoreBackend
+from memory.memory_store_backend import CustomsStoreBackend
 from a2a.types import FileWithBytes
 from config.logger import log
 import traceback
@@ -26,6 +27,7 @@ import base64
 from langgraph.store.memory import InMemoryStore
 from langchain.tools import ToolRuntime
 from langgraph.graph.state import CompiledStateGraph
+from langgraph.errors import GraphRecursionError
 from langchain.agents.middleware import (
     SummarizationMiddleware,
     HumanInTheLoopMiddleware,
@@ -62,7 +64,6 @@ import asyncio
 async def async_input(prompt: str) -> str:
     return await asyncio.to_thread(input, prompt)
 
-
 SYSTEM_PROMPT = """
 Bạn là một AI Agent cấp cao trong hệ thống Agentic.
 
@@ -73,42 +74,63 @@ Mục tiêu chính:
 
 ============================
 LONG-TERM MEMORY STRATEGY
-========================
-
-You have access to a vector-based long-term memory store.
-
-All persistent memory MUST be written using store operations under:
-
-/memories/user/{user_id}/
-
-Rules:
-
-- When user reveals stable personal info → store it.
-- Always scope memory to the current user.
-- Never store to global namespace unless explicitly told.
-
-Do NOT use filesystem paths.
-Do NOT mention files.
-
-Examples:
-
-Put:
-namespace: ("memories","user","123")
-key: "profile:name"
-value: {"text":"User name is PhuongNX"}
-
-Search:
-namespace_prefix: ("memories","user","123")
-query: "user name"
-
-============================
-TOOL USAGE DISCIPLINE
 ============================
 
-- Không gọi tool nếu có thể trả lời trực tiếp.
-- Không gọi get_long_memory cho câu hỏi chung chung không liên quan tới người dùng.
-- Không lưu memory trùng lặp.
-- Chỉ lưu khi thông tin có giá trị dài hạn.
+Bạn có quyền truy cập vào bộ nhớ dài hạn thông qua filesystem:
+- write_file() - Lưu thông tin
+- read_file() - Đọc thông tin từ trước
+- ls() - Liệt kê files
+
+Tất cả files trong thư mục /memories/ sẽ **tồn tại vĩnh viễn** 
+(persist across conversations và users).
+
+QUAN TRỌNG: Mỗi user có memory riêng biệt. 
+Không bao giờ chia sẻ memory giữa các users!
+
+KHOẢNG LƯU:
+
+Khi user chia sẻ thông tin cá nhân:
+✓ Tên, tuổi, giới tính, thành phố
+✓ Sở thích, không thích, công việc
+✓ Gia đình, mục tiêu sống, giáo dục
+
+CÁCH LƯU:
+
+Ví dụ 1: User nói "Tôi tên là Phượng"
+  → write_file("/memories/user/user_124/profile.txt", "Tên: Phượng")
+  → Trả lời: "Rất vui biết bạn, Phượng!"
+
+Ví dụ 2: User hỏi "Tên tôi là gì?"
+  → read_file("/memories/user/user_124/profile.txt")
+  → Kết quả: "Tên: Phượng"
+  → Trả lời: "Tên bạn là Phượng"
+
+STRUCTURE (Per-User):
+
+/memories/user/user_124/
+  ├── profile.txt
+  │   └── Content: "Tên: Phượng"
+  ├── preferences.txt
+  │   └── Content: "Thích: Lập trình"
+  └── knowledge.txt
+      └── Content: "Đang học Python"
+
+/memories/user/user_456/
+  ├── profile.txt
+  │   └── Content: "Tên: Bob"
+  ├── preferences.txt
+  │   └── Content: "Thích: Gaming"
+  └── knowledge.txt
+      └── Content: "Pro gamer"
+
+DISCIPLINE:
+
+- Chỉ gọi write_file khi user chia sẻ INFO MỚI hoặc CẬP NHẬT
+- Không lưu lặp lại thông tin đã có
+- Đọc file trước khi trả lời câu hỏi về info của user
+- Không lưu thông tin tạm thời (thời tiết, tin tức, v.v.)
+- **LUÔN dùng path: /memories/user/{user_id}/<filename>**
+- **user_id từ context, không hardcode!**
 
 ============================
 EXTERNAL AGENTS
@@ -123,27 +145,32 @@ Sử dụng call_external_agent khi:
 RESPONSE STYLE
 ============================
 
-- Giọng chuyên nghiệp.
-- Trả lời có cấu trúc.
-- Ưu tiên lập luận kỹ thuật.
-- Không dùng biểu tượng cảm xúc.
-- Không suy đoán nếu thiếu dữ kiện; nêu rõ giả định.
+- Giọng chuyên nghiệp, thân thiện
+- Trả lời có cấu trúc
+- Ưu tiên lập luận kỹ thuật
+- Không dùng biểu tượng cảm xúc
+- Không suy đoán nếu thiếu dữ kiện; nêu rõ giả định
 
 ============================
-SAFETY
+SAFETY & PRIVACY
 ============================
 
-- Không bịa ký ức.
-- Nếu get_long_memory không trả về gì, nói rõ.
-- Không tiết lộ nội bộ hệ thống.
+- Không bịa ký ức
+- Nếu file không tồn tại, nói rõ "Tôi chưa ghi nhớ"
+- Không tiết lộ nội bộ hệ thống
+- **PRIVACY: Không bao giờ share memory của user A với user B**
+- **PRIVACY: Không bao giờ đọc /memories/user/ của users khác**
 
-#IMPORTANT: For complex tasks, delegate to your subagents using the task() tool.
-    This keeps your context clean and improves results.
+============================
+DELEGATIONS
+============================
 
+For complex tasks, delegate to your subagents using the task() tool.
+This keeps your context clean and improves results.
 """
 
-@dataclass
-class Context:
+
+class Context(BaseModel):
     user_id: str
 
 class DispatcherInput(BaseModel):
@@ -508,10 +535,13 @@ class AgentCustom:
             user_id = rt.context.user_id  # Từ Context(user_id)
 
             print(f"=============================user id is {user_id}===========================")
+            prefix = f"/memories/user/{user_id}/"
+
+            print(f"prefix {prefix}")
             return CompositeBackend(
                 default=StateBackend(rt),
                 routes={
-                    f"/memories/user/{user_id}/": StoreBackend(rt)  # Per-user namespace!
+                    prefix: CustomsStoreBackend(rt)
                 }
             )
         agent = create_deep_agent(
@@ -592,7 +622,7 @@ class AgentCustom:
             content.append(
                 {
                     "type": "text",
-                    "text": user_input_text ,
+                    "text": user_input_text + f" với user_id {user_id}",
                 }
         
             )
@@ -601,7 +631,7 @@ class AgentCustom:
            content.append(
                 {
                     "type": "text",
-                    "text": f"Miêu tả bức ảnh này.{user_input_photo}",
+                    "text": f"Miêu tả bức ảnh này.{user_input_photo} với user_id {user_id}",
                 }
     
         )
@@ -611,37 +641,52 @@ class AgentCustom:
 
         input_payload = {"messages": [HumanMessage(content=content)]}
         final_state = None
+        try:
+            while True:
+                interrupted = False
 
-        while True:
-            interrupted = False
+                async for mode, payload in self.agent.astream(
+                    input_payload,
+                    config=config,
+                    stream_mode=["values", "updates", "messages"],
+                    context={"user_id": user_id} if user_id else None
+                ):
+                    # giữ state cuối
+                    if mode == "values":
+                        final_state = payload
 
-            async for mode, payload in self.agent.astream(
-                input_payload,
-                config=config,
-                stream_mode=["values", "updates", "messages"],
-                context=Context(user_id=user_id) if user_id else None
-            ):
-                # giữ state cuối
-                if mode == "values":
-                    final_state = payload
+                    # ===== INTERRUPT =====
+                    if "__interrupt__" in payload:
+                        interrupted = True
+                        interrupt_event = payload["__interrupt__"][0]
+                        hitl_request = interrupt_event.value
+                        decisions = Command(
+                            resume={
+                                "decisions": await process_mess_interrupt(
+                                    hitl_request=hitl_request
+                                )
+                            }
+                        )
+                        input_payload = decisions
+                        break
 
-                # ===== INTERRUPT =====
-                if "__interrupt__" in payload:
-                    interrupted = True
-                    interrupt_event = payload["__interrupt__"][0]
-                    hitl_request = interrupt_event.value
-                    decisions = Command(
-                        resume={
-                            "decisions": await process_mess_interrupt(
-                                hitl_request=hitl_request
-                            )
-                        }
-                    )
-                    input_payload = decisions
+                if not interrupted:
                     break
+        except GraphRecursionError as e:
+            log.exception("LangGraph recursion overflow")
+            yield {
+                "type": "error",
+                "message": "Agent bị lặp vòng suy luận. Vui lòng thử lại."
+            }
 
-            if not interrupted:
-                break
+        except Exception as e:
+            log.exception("Unhandled agent exception")
+            yield {
+                "type": "error",
+                "message": "Hệ thống gặp lỗi nội bộ."
+            }
+       
+                
 
         # ===== FINAL ANSWER =====
         if final_state:

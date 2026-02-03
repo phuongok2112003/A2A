@@ -37,27 +37,121 @@ class PineconeMemoryStore(BaseStore):
 
     
     def batch(self, ops: Iterable[Op]) -> List[Result]:
-        print("=======================Nhay vào ppicnjdfhu--===============================")
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = None
-
-        if loop and loop.is_running():
-            return loop.run_until_complete(self.abatch(ops))
-        else:
-            return asyncio.run(self.abatch(ops))
-
-    async def abatch(self, ops: Iterable[Op]) -> List[Result]:
+        print("=======================Nhay vào batch--===============================")
         results = []
         for op in ops:
             if isinstance(op, GetOp):
+                print("\n\nGọi vào get====\n\n")
+                results.append(self._get_sync(op))
+            elif isinstance(op, PutOp):
+                print("\n\nGọi vào put====\n\n")
+                results.append(self._put_sync(op))
+            elif isinstance(op, SearchOp):
+                print("\n\nGọi vào search====\n\n")
+                results.append(self._search_sync(op))
+        return results
+    
+
+
+    def _get_sync(self, op: GetOp) -> Optional[Item]:
+        namespace = ns_tuple_to_str(op.namespace)
+        res = self.index.fetch(ids=[op.key], namespace=namespace)
+       
+        if op.key not in res.vectors:
+            return None
+            
+        vec = res.vectors[op.key]
+        content = vec.metadata.get("text") or vec.metadata.get("page_content")
+
+        if not content:
+            raise ValueError("Missing content in Pinecone metadata")
+
+        return Item(
+            key=op.key,
+            value={  
+                "content": content,
+                "created_at": vec.metadata.get("created_at"),
+                "updated_at": vec.metadata.get("updated_at")
+            },
+            namespace=op.namespace,
+            created_at=vec.metadata.get("created_at"),
+            updated_at=vec.metadata.get("updated_at"),
+        )
+   
+    def _put_sync(self, op: PutOp) -> Optional[Result]:
+        namespace = ns_tuple_to_str(op.namespace)
+        
+        if op.value is None:
+            self.index.delete(ids=[op.key], namespace=namespace)
+            return None
+
+       
+        text =  json.dumps(op.value)
+
+        print(f"\n\nText trong put {text}\n\n")
+
+        
+        doc = Document(
+            id=op.key,
+            page_content=str(op.value.get("content")),
+            metadata={
+                "text": str(op.value.get("content")),
+                "namespace": namespace,  # Để filter
+                "created_at": op.value.get("created_at", datetime.now().isoformat()),
+                "updated_at": op.value.get("updated_at", datetime.now().isoformat())
+            }
+        )
+        
+
+        self.vector_store.add_documents([doc], ids=[op.key], namespace=namespace)
+        return None
+
+    def _search_sync(self, op: SearchOp) -> List[SearchItem]:
+        print(f"data in search {op}")
+        if not op.query:
+            return []
+        filter_dict = op.filter or {}
+        if op.namespace_prefix:
+            filter_dict["namespace"] = {"$like": f"{ns_tuple_to_str(op.namespace_prefix)}%"}
+
+        results = self.vector_store.similarity_search_with_score(
+            query=op.query,
+            k=op.limit or 4,
+            filter=filter_dict
+        )
+        
+        items = []
+        for doc, score in results:
+            items.append(SearchItem(
+                namespace=op.namespace_prefix,
+                 key=doc.id,
+                value={
+                    "content": doc.page_content,
+                    "metadata": doc.metadata
+                },
+                score=float(score),
+                created_at=doc.metadata.get("created_at"),
+                updated_at=doc.metadata.get("updated_at")
+            ))
+        return items
+
+
+
+    async def abatch(self, ops: Iterable[Op]) -> List[Result]:
+        print("=======================Nhay vào abatch--===============================")
+        results = []
+        for op in ops:
+            if isinstance(op, GetOp):
+                print("\n\nGọi vào _aget====\n\n")
                 results.append(await self._aget(op))
             elif isinstance(op, PutOp):
+                print("\n\nGọi vào _aput====\n\n")
                 results.append(await self._aput(op))
             elif isinstance(op, SearchOp):
+                print("\n\nGọi vào _asearch====\n\n")
                 results.append(await self._asearch(op))
             elif isinstance(op, ListNamespacesOp):
+                print("\n\nGọi vào _alist_namespaces====\n\n")
                 results.append(await self._alist_namespaces(op))
         return results
 
@@ -65,17 +159,28 @@ class PineconeMemoryStore(BaseStore):
     async def _aget(self, op: GetOp) -> Optional[Item]:
         namespace = ns_tuple_to_str(op.namespace)
         res = self.index.fetch(ids=[op.key], namespace=namespace)
-        print("REst ",res)
+    
         if op.key not in res.vectors:
             return None
             
         vec = res.vectors[op.key]
-        value = {
-            "text": vec.metadata.get("text", ""),  # Nội dung gốc
-            "metadata": vec.metadata
-        }
-        return Item(key=op.key, value=value, namespace=op.namespace,
-                     updated_at=vec.metadata.get("updated_at", ""),created_at=vec.metadata.get("created_at", ""))
+        content = vec.metadata.get("text") or vec.metadata.get("page_content")
+
+        if not content:
+            raise ValueError("Missing content in Pinecone metadata")
+
+     
+        return Item(
+            key=op.key,
+            value={  # ← Thay vì `value=content`
+                "content": content,
+                "created_at": vec.metadata.get("created_at"),
+                "updated_at": vec.metadata.get("updated_at")
+            },
+            namespace=op.namespace,
+            created_at=vec.metadata.get("created_at"),
+            updated_at=vec.metadata.get("updated_at"),
+        )
 
    
     async def _aput(self, op: PutOp) -> Optional[Result]:
@@ -85,18 +190,20 @@ class PineconeMemoryStore(BaseStore):
             self.index.delete(ids=[op.key], namespace=namespace)
             return None
 
-        # Chuẩn hóa value thành Document cho Pinecone
-        text = op.value.get("text", json.dumps(op.value))
-        metadata = op.value.get("metadata", {})
-        
+       
+        text =  json.dumps(op.value)
+
+
+        print(f"\n\nText trong put {text}\n\n")
+
         doc = Document(
             id=op.key,
-            page_content=text,
+            page_content=str(op.value.get("content")),
             metadata={
-                **metadata,
+                "text": str(op.value.get("content")),
                 "namespace": namespace,  # Để filter
-                "created_at": metadata.get("created_at", datetime.now().isoformat()),
-                "updated_at": metadata.get("updated_at", datetime.now().isoformat())
+                "created_at": op.value.get("created_at", datetime.now().isoformat()),
+                "updated_at": op.value.get("updated_at", datetime.now().isoformat())
             }
         )
         
@@ -105,7 +212,9 @@ class PineconeMemoryStore(BaseStore):
         return None
 
     async def _asearch(self, op: SearchOp) -> List[SearchItem]:
-     
+        print(f"data in search {op}")
+        if not op.query:
+            op.query = ""
         filter_dict = op.filter or {}
         if op.namespace_prefix:
             filter_dict["namespace"] = {"$like": f"{ns_tuple_to_str(op.namespace_prefix)}%"}
@@ -122,7 +231,7 @@ class PineconeMemoryStore(BaseStore):
                 namespace=op.namespace_prefix,
                  key=doc.id,
                 value={
-                    "text": doc.page_content,
+                    "content": doc.page_content,
                     "metadata": doc.metadata
                 },
                 score=float(score),
