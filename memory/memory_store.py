@@ -9,6 +9,7 @@ from langchain_pinecone import PineconeEmbeddings, PineconeVectorStore
 from langchain_core.documents import Document
 from datetime import datetime
 import asyncio
+
 def ns_tuple_to_str(ns: tuple[str, ...]) -> str:
     return "/".join(ns)
 
@@ -64,7 +65,7 @@ class PineconeMemoryStore(BaseStore):
     async def _aget(self, op: GetOp) -> Optional[Item]:
         namespace = ns_tuple_to_str(op.namespace)
         res = self.index.fetch(ids=[op.key], namespace=namespace)
-        
+        print("REst ",res)
         if op.key not in res.vectors:
             return None
             
@@ -73,7 +74,8 @@ class PineconeMemoryStore(BaseStore):
             "text": vec.metadata.get("text", ""),  # Nội dung gốc
             "metadata": vec.metadata
         }
-        return Item(key=op.key, value=value, namespace=op.namespace)
+        return Item(key=op.key, value=value, namespace=op.namespace,
+                     updated_at=vec.metadata.get("updated_at", ""),created_at=vec.metadata.get("created_at", ""))
 
    
     async def _aput(self, op: PutOp) -> Optional[Result]:
