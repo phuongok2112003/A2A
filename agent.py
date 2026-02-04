@@ -18,7 +18,7 @@ from a2a.types import Message, TextPart, DataPart, FilePart
 from uuid import uuid4
 import mimetypes
 import os
-from deepagents.backends import CompositeBackend, StateBackend, StoreBackend
+from deepagents.backends import CompositeBackend, StateBackend, FilesystemBackend
 from memory.memory_store_backend import CustomsStoreBackend
 from a2a.types import FileWithBytes
 from config.logger import log
@@ -49,7 +49,7 @@ from langchain.agents.middleware.human_in_the_loop import HITLRequest, Decision
 from a2a.server.tasks import TaskUpdater
 from a2a.types import TaskState
 from a2a.utils import new_agent_text_message, new_task
-from schemas.base import ServerAgentRequest
+from schemas.base import ServerAgentRequest, Context
 from until.convert import dict_to_string, string_to_dict
 from until.process_mes import process_mess_interrupt
 from memory.memory_store import PineconeMemoryStore
@@ -97,17 +97,17 @@ Khi user chia sẻ thông tin cá nhân:
 CÁCH LƯU:
 
 Ví dụ 1: User nói "Tôi tên là Phượng"
-  → write_file("/memories/user/user_124/profile.txt", "Tên: Phượng")
+  → write_file("/memories/user/user_id/profile.txt", "Tên: Phượng")
   → Trả lời: "Rất vui biết bạn, Phượng!"
 
 Ví dụ 2: User hỏi "Tên tôi là gì?"
-  → read_file("/memories/user/user_124/profile.txt")
+  → read_file("/memories/user/user_id/profile.txt")
   → Kết quả: "Tên: Phượng"
   → Trả lời: "Tên bạn là Phượng"
 
 STRUCTURE (Per-User):
 
-/memories/user/user_124/
+/memories/user/user_id/
   ├── profile.txt
   │   └── Content: "Tên: Phượng"
   ├── preferences.txt
@@ -115,7 +115,7 @@ STRUCTURE (Per-User):
   └── knowledge.txt
       └── Content: "Đang học Python"
 
-/memories/user/user_456/
+/memories/user/user_id/
   ├── profile.txt
   │   └── Content: "Tên: Bob"
   ├── preferences.txt
@@ -129,8 +129,8 @@ DISCIPLINE:
 - Không lưu lặp lại thông tin đã có
 - Đọc file trước khi trả lời câu hỏi về info của user
 - Không lưu thông tin tạm thời (thời tiết, tin tức, v.v.)
-- **LUÔN dùng path: /memories/user/{user_id}/<filename>**
-- **user_id từ context, không hardcode!**
+- **LUÔN dùng path: /memories/user/user_id/<filename>**
+
 
 ============================
 EXTERNAL AGENTS
@@ -169,9 +169,6 @@ For complex tasks, delegate to your subagents using the task() tool.
 This keeps your context clean and improves results.
 """
 
-
-class Context(BaseModel):
-    user_id: str
 
 class DispatcherInput(BaseModel):
     agent_name: str = Field(
@@ -500,13 +497,16 @@ class AgentCustom:
             user_id = rt.context.user_id  # Từ Context(user_id)
 
             print(f"=============================user id is {user_id}===========================")
-            prefix = f"/memories/user/"
+            prefix_store = f"/memories/user/"
+            prefix_file_system = f"/memories/file_system/"
 
-            print(f"prefix {prefix}")
+            print(f"prefix_store {prefix_store}")
             return CompositeBackend(
                 default=StateBackend(rt),
                 routes={
-                    prefix: CustomsStoreBackend(rt)
+                    prefix_store: CustomsStoreBackend(rt),
+                    prefix_file_system : FilesystemBackend(root_dir=f"{settings.BASE_DIR}/doc")
+
                 }
             )
         agent = create_deep_agent(
@@ -515,11 +515,17 @@ class AgentCustom:
             system_prompt=self.system_prompt,
             checkpointer=checkpointer,
             store=store,
+            skills=[f"{settings.BASE_DIR}/skills"],
             name="gemini-agent",
             debug=True,
             subagents=self.sub_agents,
             context_schema=Context,
             backend= make_backend,
+            interrupt_on={
+                "write_file": True,  # Default: approve, edit, reject
+                "read_file": False,  # No interrupts needed
+                "edit_file": True    # Default: approve, edit, reject
+            },
             # middleware=[
             #     SummarizationMiddleware(
             #         max_tokens_before_summary=self.max_tokens_before_summary,

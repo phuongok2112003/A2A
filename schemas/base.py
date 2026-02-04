@@ -3,6 +3,8 @@ from typing import Optional, Dict, Any, List, Literal
 from a2a.types import AgentSkill
 from a2a.types import Message
 
+class Context(BaseModel):
+    user_id: str
 class AgentServer(BaseModel):
     define_public_skills : List[AgentSkill]
     define_private_skills : List[AgentSkill]

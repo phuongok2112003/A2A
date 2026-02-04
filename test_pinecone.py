@@ -164,4 +164,11 @@ from langgraph.store.base import BaseStore, GetOp, PutOp, SearchOp, ListNamespac
 store = PineconeMemoryStore(api_key=settings.PINECONE_KEY)
 store.put(namespace=("test",), key="test", value={"name": "Phượng"})
 item = store.get(namespace=("test",), key="test")
-print(item)  
+
+result = store.search(('user_124',), filter=None, limit=100, offset=0, query=None, refresh_ttl=True)
+print(result)
+
+filepaht= "/user_124/profile.txt"
+sp = filepaht.split('/')
+print(sp)
+

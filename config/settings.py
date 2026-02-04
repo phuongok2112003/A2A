@@ -2,6 +2,8 @@ import os
 from pydantic_settings import BaseSettings
 import dotenv
 dotenv.load_dotenv()
+from pathlib import Path
+
 
 class Settings(BaseSettings):
     GOOGLE_A2A_API_KEY: str = os.getenv("GOOGLE_A2A_API_KEY", "your_default_api_key")
@@ -18,5 +20,6 @@ class Settings(BaseSettings):
     NGROK_API:str = os.getenv("NGROK_API","http://127.0.0.1:4040/api/tunnels")
     OLLAMA_KEY:str = os.getenv("OLLAMA_KEY","")
     APP_NAME: str = "A2A_Application"
+    BASE_DIR:str = str(Path(__file__).resolve().parent)
 
 settings = Settings()

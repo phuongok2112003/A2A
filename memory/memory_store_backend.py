@@ -14,6 +14,7 @@ from deepagents.backends.protocol import (
     GrepMatch,
     WriteResult,
 )
+from schemas.base import ServerAgentRequest, Context
 from deepagents.backends.utils import (
     _glob_search_files,
     create_file_data,
@@ -57,9 +58,15 @@ class CustomsStoreBackend(BackendProtocol):
             raise ValueError(msg)
         return store
 
-    def _get_context(self):
-        context = self.runtime.context
+    def _get_context(self)->Context:
+        context:Context = self.runtime.context
         return context
+    
+    def _get_file_path(self, file_path:str)->str:
+        print(f"File path hiện tại : {file_path}")
+        file_path = file_path.replace(file_path.split('/')[1],self._get_context().user_id)
+        print(f"File path sau khi process: {file_path}")
+        return file_path
 
 
     def _get_namespace(self) -> tuple[str, ...]:
@@ -73,7 +80,7 @@ class CustomsStoreBackend(BackendProtocol):
         If an assistant_id is available in the config metadata, return
         (assistant_id, "filesystem") to provide per-assistant isolation.
         """
-        namespace = "filesystem"
+        namespace = self._get_context().user_id
 
         # Prefer the runtime-provided config when present
         runtime_cfg = getattr(self.runtime, "config", None)
@@ -198,6 +205,7 @@ class CustomsStoreBackend(BackendProtocol):
             List of FileInfo-like dicts for files and directories directly in the directory.
             Directories have a trailing / in their path and is_dir=True.
         """
+        print(f"\n\n Path in ls_info {path}\n\n")
         store = self._get_store()
         namespace = self._get_namespace()
         
@@ -273,6 +281,7 @@ class CustomsStoreBackend(BackendProtocol):
         """
         store = self._get_store()
         namespace = self._get_namespace()
+        file_path = self._get_file_path(file_path=file_path)
         item: Item | None = store.get(namespace, file_path)
 
         if item is None:
@@ -297,6 +306,7 @@ class CustomsStoreBackend(BackendProtocol):
         """
         store = self._get_store()
         namespace = self._get_namespace()
+        file_path = self._get_file_path(file_path=file_path)
         item: Item | None = await store.aget(namespace, file_path)
 
         if item is None:
@@ -319,7 +329,7 @@ class CustomsStoreBackend(BackendProtocol):
         """
         store = self._get_store()
         namespace = self._get_namespace()
-
+        file_path = self._get_file_path(file_path=file_path)
         # Check if file exists
         existing = store.get(namespace, file_path)
         if existing is not None:
@@ -344,7 +354,7 @@ class CustomsStoreBackend(BackendProtocol):
         """
         store = self._get_store()
         namespace = self._get_namespace()
-
+        file_path = self._get_file_path(file_path=file_path)
         # Check if file exists using async method
         existing = await store.aget(namespace, file_path)
         if existing is not None:
@@ -372,7 +382,7 @@ class CustomsStoreBackend(BackendProtocol):
         """
         store = self._get_store()
         namespace = self._get_namespace()
-
+        file_path = self._get_file_path(file_path=file_path)
         # Get existing file
         item = store.get(namespace, file_path)
         if item is None:
@@ -410,7 +420,7 @@ class CustomsStoreBackend(BackendProtocol):
         """
         store = self._get_store()
         namespace = self._get_namespace()
-
+        file_path = self._get_file_path(file_path=file_path)
         # Get existing file using async method
         item = await store.aget(namespace, file_path)
         if item is None:

@@ -66,12 +66,14 @@ class PineconeMemoryStore(BaseStore):
         if not content:
             raise ValueError("Missing content in Pinecone metadata")
 
+        print(f"Content {content}")
+
         return Item(
             key=op.key,
             value={  
-                "content": content,
+                "content": content.splitlines(keepends=True),
                 "created_at": vec.metadata.get("created_at"),
-                "updated_at": vec.metadata.get("updated_at")
+                "modified_at": vec.metadata.get("updated_at")
             },
             namespace=op.namespace,
             created_at=vec.metadata.get("created_at"),
@@ -108,18 +110,19 @@ class PineconeMemoryStore(BaseStore):
 
     def _search_sync(self, op: SearchOp) -> List[SearchItem]:
         print(f"data in search {op}")
-        if not op.query:
-            return []
+       
         filter_dict = op.filter or {}
         if op.namespace_prefix:
-            filter_dict["namespace"] = {"$like": f"{ns_tuple_to_str(op.namespace_prefix)}%"}
+            namespace_str = ns_tuple_to_str(op.namespace_prefix)
+            filter_dict["namespace"] = namespace_str
 
         results = self.vector_store.similarity_search_with_score(
-            query=op.query,
+            query= "profile" if op.query == None else op.query,
             k=op.limit or 4,
+            namespace= namespace_str,
             filter=filter_dict
         )
-        
+        print(f"Ket qua của search là: {results}")
         items = []
         for doc, score in results:
             items.append(SearchItem(
@@ -169,13 +172,15 @@ class PineconeMemoryStore(BaseStore):
         if not content:
             raise ValueError("Missing content in Pinecone metadata")
 
-     
+        print(f"Content {content}  Type {type(content)}")
+        print(f"crete_at {vec.metadata.get("created_at")}  Type {type(vec.metadata.get("created_at"))}")
+        print(f"modified_at {vec.metadata.get("updated_at")}  Type {type(vec.metadata.get("updated_at"))}")
         return Item(
             key=op.key,
-            value={  # ← Thay vì `value=content`
-                "content": content,
+            value={ 
+                "content": content.splitlines(keepends=True),
                 "created_at": vec.metadata.get("created_at"),
-                "updated_at": vec.metadata.get("updated_at")
+                "modified_at": vec.metadata.get("updated_at")
             },
             namespace=op.namespace,
             created_at=vec.metadata.get("created_at"),
@@ -213,18 +218,21 @@ class PineconeMemoryStore(BaseStore):
 
     async def _asearch(self, op: SearchOp) -> List[SearchItem]:
         print(f"data in search {op}")
-        if not op.query:
-            op.query = ""
         filter_dict = op.filter or {}
         if op.namespace_prefix:
-            filter_dict["namespace"] = {"$like": f"{ns_tuple_to_str(op.namespace_prefix)}%"}
+            namespace_str = ns_tuple_to_str(op.namespace_prefix)
+            filter_dict["namespace"] = namespace_str
 
         results = await self.vector_store.asimilarity_search_with_score(
-            query=op.query,
+            query= "profile" if op.query == None else op.query,
             k=op.limit or 4,
-            filter=filter_dict
+            filter=filter_dict,
+            namespace= namespace_str,
         )
         
+
+        print(f"Ket qua của asearch là: {results}")
+
         items = []
         for doc, score in results:
             items.append(SearchItem(
@@ -242,8 +250,9 @@ class PineconeMemoryStore(BaseStore):
 
      
     async def _alist_namespaces(self, op: ListNamespacesOp) -> List[str]:
-      
-        return []
+        stats = self.index.describe_index_stats()
+        return list(stats["namespaces"].keys())
+           
         
        
 

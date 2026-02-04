@@ -29,6 +29,130 @@ from deepagents.middleware.summarization import SummarizationMiddleware
 
 BASE_AGENT_PROMPT = "In order to complete the objective that the user asks of you, you have access to a number of standard tools."
 
+CUSTOM_TOOL_DESCRIPTIONS: dict[str, str] = {
+    "ls": """
+List files and directories at the given absolute path.
+
+Rules:
+- Always use this tool before reading or editing files in an unfamiliar directory.
+- Use absolute paths starting with '/' only.
+- Prefer ls over guessing filenames.
+- If the directory contains many files, refine your exploration with glob instead of repeatedly calling ls.
+
+Typical flow:
+ls("/src") -> glob("**/*.py", path="/src") -> read_file(...)
+""".strip(),
+
+    "read_file": """
+Read file contents from the virtual filesystem.
+
+Rules:
+- ALWAYS read a file before attempting to edit it.
+- For large files or codebases, paginate using offset and limit.
+- First scan: limit=100 to understand structure.
+- Continue reading with increasing offset.
+- Only omit limit (read full file) when strictly required for editing.
+- Do NOT assume file contents without reading.
+- Paths must be absolute and validated.
+
+Best practices:
+- Read surrounding context before modifying logic.
+- Avoid reading huge files in a single call unless necessary.
+""".strip(),
+
+    "write_file": """
+Create a new file in the filesystem.
+
+Rules:
+- Prefer edit_file over write_file whenever a file already exists.
+- Only create new files when explicitly required.
+- Ensure parent directories exist before writing.
+- Do not overwrite existing files with this tool.
+- Use consistent formatting and correct indentation.
+
+Typical use cases:
+- Creating a brand new module.
+- Writing tool output saved from execution results.
+""".strip(),
+
+    "edit_file": """
+Perform exact string replacements inside an existing file.
+
+CRITICAL rules:
+- You MUST read the file first using read_file.
+- old_string must match the file contents exactly.
+- Preserve indentation and formatting.
+- Never include line numbers.
+- Avoid broad replacements unless replace_all=True is intentional.
+- Modify the smallest possible region.
+- Prefer multiple small edits over one large replacement.
+
+Workflow:
+read_file(...) -> reason about change -> edit_file(...)
+""".strip(),
+
+    "glob": """
+Search for files using glob patterns.
+
+Rules:
+- Use this instead of shell find commands.
+- Combine with ls when exploring large repos.
+- Always prefer glob over brute-force directory scans.
+- Patterns must follow standard glob syntax.
+
+Examples:
+- '**/*.py'
+- '/services/**/Dockerfile'
+- '*.md'
+""".strip(),
+
+    "grep": """
+Search for literal text inside files.
+
+Rules:
+- Use this instead of shell grep/find.
+- Pattern is literal text, not regex.
+- Combine with glob to restrict scope.
+- Use output_mode='content' when you need line context.
+- Narrow searches if results are too large.
+
+Output modes:
+- files_with_matches (default)
+- content
+- count
+
+Typical flow:
+glob("**/*.py") -> grep("TODO", glob="**/*.py")
+""".strip(),
+
+    "execute": """
+Run shell commands inside the sandbox backend.
+
+STRICT rules:
+- Only use this tool if backend supports execution.
+- NEVER use shell grep/find/cat/head/tail.
+  - Use grep, glob, read_file instead.
+- Always quote paths containing spaces.
+- Prefer absolute paths.
+- Avoid changing directories; use full paths.
+- Separate multiple commands with && or ; (no newlines unless inside quotes).
+- Verify directories with ls before creating files or folders.
+- Capture and analyze output and exit codes.
+
+Use cases:
+- Running tests.
+- Linting.
+- Build scripts.
+- Code generation pipelines.
+
+Forbidden:
+- find .
+- grep -r
+- cat file.txt
+- cd dir && command
+""".strip(),
+}
+
 
 def get_default_model() -> ChatAnthropic:
     """Get the default model for deep agents.
@@ -217,7 +341,7 @@ def create_deep_agent(
         deepagent_middleware.append(SkillsMiddleware(backend=backend, sources=skills))
     deepagent_middleware.extend(
         [
-            FilesystemMiddleware(backend=backend),
+            FilesystemMiddleware(backend=backend, custom_tool_descriptions=CUSTOM_TOOL_DESCRIPTIONS),
             SubAgentMiddleware(
                 default_model=model,
                 default_tools=tools,
