@@ -50,23 +50,38 @@ class BaseAgentExecutor(AgentExecutor, ABC):
             "configurable": {"thread_id": server_agent.context_id},
             "recursion_limit": self.agent.recursion_limit,
         }
-
+        input_user:str = None
+        user_id:str
+        data_command: dict = None
         task_finished = False
         final_state = None
+        for part in server_agent.input_payload.parts:
+            if isinstance(part.root, DataPart):
+                data = part.root.data
+                if data["type"] == "input_user":
+                    input_user = data["data"]
+                elif data["type"] == "user_id":
+                    user_id = data["data"]
+                elif data["type"] == "command":
+                    data_command = data["data"]
+                else:
+                    raise ValueError("Invalid input payload")
 
-        # ===== INPUT =====
-        part = server_agent.input_payload.parts[0]
-        if isinstance(part.root, DataPart):
-            data = part.root.data
-        else:
-            raise ValueError("Invalid input payload")
+        # # ===== INPUT =====
+        # part = server_agent.input_payload.parts[0]
+        # if isinstance(part.root, DataPart):
+        #     data = part.root.data
+        # else:
+        #     raise ValueError("Invalid input payload")
+        if input_user:
+            graph_input = {"messages": [HumanMessage(content=input_user)]}
+
+        elif data_command:
+            graph_input = Command(resume=data_command)
 
         async for mode, payload in self.agent.agent.astream(
-            (
-                {"messages": [HumanMessage(content=data["data"])]}
-                if data["type"] == "input_user"
-                else Command(resume=data["data"])
-            ),
+            graph_input,
+            context={"user_id": user_id} if user_id else "guest",
             config=config,
             stream_mode=["values", "updates", "messages"],
         ):

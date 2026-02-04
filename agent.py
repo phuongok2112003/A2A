@@ -201,7 +201,7 @@ class AgentCustom:
         self.tools = tools if tools else []
         self.agent_registry = {}
         self.agent: CompiledStateGraph = None
-        self.sub_agents: list[SubAgent | CompiledSubAgent] | None = None,
+        self.sub_agents: list[SubAgent | CompiledSubAgent] | None = None
         self.max_tokens_before_summary = max_tokens_before_summary
         self.recursion_limit = recursion_limit
         self.interrupt_on_tool = {}
@@ -209,6 +209,13 @@ class AgentCustom:
             self.interrupt_on_tool = {
                 f"{tool.to_json()['name']}": True for tool in interrupt_on_tool
             }
+            self.interrupt_on_tool.update(
+                 {
+                    "write_file": True,
+                    "read_file": False,
+                    "edit_file": True,
+                }
+            )
 
     @classmethod
     async def create(cls, access_agent_urls: List[str] = [], **kwargs):
@@ -296,6 +303,7 @@ class AgentCustom:
         async def call_agent_impl(
             agent_name: str,
             query: str,
+            runtime: ToolRuntime,
             extra_data: Optional[dict] = None,
             file_path: Optional[str] = None,
             config: Annotated[RunnableConfig, InjectedToolArg] = None,
@@ -326,6 +334,9 @@ class AgentCustom:
             parts = [DataPart(data={"type":"input_user",
                                     "data": query
                                     })]
+            parts.append(DataPart(data={"type":"user_id",
+                                    "data": runtime.context.user_id
+                                    }))
             data_payload = extra_data if extra_data else None
             if data_payload:
                 parts.append(DataPart(data=data_payload))
@@ -392,7 +403,11 @@ class AgentCustom:
                                                     hitl_request=data
                                                 )
                                             }}
-                                        )
+                                        ),
+                                        DataPart(
+                                            data={"type":"user_id",
+                                            "data": runtime.context.user_id
+                                        })
                                     ],
                                 )
                                 break
@@ -521,11 +536,7 @@ class AgentCustom:
             subagents=self.sub_agents,
             context_schema=Context,
             backend= make_backend,
-            interrupt_on={
-                "write_file": True,  # Default: approve, edit, reject
-                "read_file": False,  # No interrupts needed
-                "edit_file": True    # Default: approve, edit, reject
-            },
+            interrupt_on=self.interrupt_on_tool,
             # middleware=[
             #     SummarizationMiddleware(
             #         max_tokens_before_summary=self.max_tokens_before_summary,
