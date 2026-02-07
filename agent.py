@@ -167,6 +167,11 @@ DELEGATIONS
 
 For complex tasks, delegate to your subagents using the task() tool.
 This keeps your context clean and improves results.
+
+
+Nếu một tool đã được gọi và có kết quả hợp lệ cho cùng yêu cầu,
+KHÔNG gọi lại tool đó.
+Trả lời trực tiếp cho người dùng.
 """
 
 
@@ -395,6 +400,7 @@ class AgentCustom:
                                 message = Message(
                                     messageId=uuid4().hex,
                                     role="user",
+                                    task_id=task_id,
                                     context_id=context_id,
                                     parts=[
                                         DataPart(
@@ -435,7 +441,7 @@ class AgentCustom:
             Chỉ dùng để gọi các AGENT BÊN NGOÀI qua URL. KHÔNG dùng cho subagent local như process-image-agent ...v.v.
             Sử dụng công cụ này để kết nối và gửi yêu cầu tới các Agent chuyên gia khác.
             Dựa vào danh sách dưới đây để chọn 'agent_name' phù hợp nhất với yêu cầu của người dùng.
-            
+            Câu trả của agent này có thể sẽ không khớp với câu hỏi của người dùng, tại có thể trong quá trình interrupt người dùng thay đổi nội dung hỏi.
             DANH SÁCH AGENT KHẢ DỤNG:
             {agents_desc_str}
             """,

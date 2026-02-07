@@ -10,7 +10,8 @@ from a2a.types import TaskState, DataPart
 from a2a.utils import new_agent_text_message, new_task
 from schemas.base import ServerAgentRequest
 from until.convert import dict_to_string
-
+from a2a.server.agent_execution.context import RequestContext
+from a2a.server.events.event_queue import EventQueue
 
 class BaseAgentExecutor(AgentExecutor, ABC):
     def __init__(
@@ -34,11 +35,11 @@ class BaseAgentExecutor(AgentExecutor, ABC):
             )
 
     @abstractmethod
-    async def execute(self, context, event_queue):
+    async def execute(self,  context: RequestContext, event_queue: EventQueue):
         pass
 
     @abstractmethod
-    async def cancel(self, context, event_queue):
+    async def cancel(self,  context: RequestContext, event_queue: EventQueue):
         pass
 
     async def run_astream_in_agent_server(
@@ -74,9 +75,11 @@ class BaseAgentExecutor(AgentExecutor, ABC):
         # else:
         #     raise ValueError("Invalid input payload")
         if input_user:
+            print(f"User inpuit ở A2A {input_user}")
             graph_input = {"messages": [HumanMessage(content=input_user)]}
 
         elif data_command:
+            print(f"User inpuidata_command  ở A2A {data_command}")
             graph_input = Command(resume=data_command)
 
         async for mode, payload in self.agent.agent.astream(
@@ -118,4 +121,5 @@ class BaseAgentExecutor(AgentExecutor, ABC):
                             server_agent.task_id,
                         ),
                     )
+                    print("[INFO] Task completed successfully")
                     return

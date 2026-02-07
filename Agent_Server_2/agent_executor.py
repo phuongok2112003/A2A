@@ -8,6 +8,7 @@ from a2a.server.agent_execution import AgentExecutor
 from a2a.types import (
     Task,
     TaskStatus,
+    TaskState,
     TaskStatusUpdateEvent,
     TaskArtifactUpdateEvent,
     Message,
@@ -52,22 +53,22 @@ class CurrencyAgentExecutor(BaseAgentExecutor):
             print(f"[INFO] Task ID: {context.task_id}")
             print(f"[INFO] Context ID: {context.context_id}")
             print(f"[DEBUG] Message parts: {context.get_user_input()}")
-            
 
+            
             task = context.current_task
+            updater = TaskUpdater(event_queue = event_queue,task_id = context.task_id, context_id = context.context_id)
             if not task:
                 print("[INFO] Creating initial task from message")
                 task = new_task(context.message)
+                updater = TaskUpdater(event_queue = event_queue,task_id = task.id, context_id = task.context_id)
+                print(f"[INFO] Enqueuing initial Task {context.message}")
+                await event_queue.enqueue_event(task)
 
-            print(f"[INFO] Enqueuing initial Task {context.message}")
-            await event_queue.enqueue_event(task)
-            updater = TaskUpdater(event_queue = event_queue,task_id = task.id,context_id = task.context_id)
-
-
-            await updater.update_status(
-                state="working",
-                message=new_agent_text_message("Processing currency conversion...",task.context_id, task.id)
-            )
+          
+                await updater.update_status(
+                    state="working",
+                    message=new_agent_text_message("Processing currency conversion...",task.context_id, task.id)
+                )
             
             request_agent = ServerAgentRequest(context_id=task.context_id, task_id= task.id,
                                                input_payload=context.message)
@@ -83,7 +84,7 @@ class CurrencyAgentExecutor(BaseAgentExecutor):
             # # await updater.complete()
             # await event_queue.close()
 
-            print("[INFO] Task completed successfully")
+           
 
         except Exception as e:
             print(f"[ERROR] Executor failed: {e}")

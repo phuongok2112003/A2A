@@ -15,21 +15,21 @@ import requests
 from pathlib import Path
 from langchain_core.messages import HumanMessage
 from common.export_models_llm import ModelsLLM
-
+import os, json
 
 @tool(args_schema=RunShellArgs)
-def run_shell(command: str, timeout: int = 30) -> str:
+def run_shell(command: str, timeout: int = 30) -> dict:
     """
     Execute a shell command and return stdout/stderr.
 
     Use for:
     - git commands
-    - ls / dir
     - pip / python
     - system inspection
+    The output is JSON with status and execution metadata.
     """
     if not command or not command.strip():
-        return "Empty command"
+        return {"status": "error", "message": "Empty command"}
 
     try:
         completed = subprocess.run(
@@ -38,22 +38,42 @@ def run_shell(command: str, timeout: int = 30) -> str:
             capture_output=True,
             text=True,
             timeout=timeout,
+            env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
         )
 
-        output = completed.stdout.strip()
-        error = completed.stderr.strip()
+        stdout = completed.stdout.strip()
+        stderr = completed.stderr.strip()
 
-        if completed.returncode != 0:
-            return f"[ERROR]\n{error or output}"
+        print("STDOUT:", stdout)
+        print("STDERR:", stderr)
 
-        return output or "[OK] Command executed with no output"
+        success = completed.returncode == 0
+
+        return {
+                "status": "success" if success else "error",
+                "command": command,
+                "returncode": completed.returncode,
+                "stdout": stdout,
+                "stderr": stderr,
+                "objective_completed": success
+                and command.startswith("git clone"),
+            }
+        
 
     except subprocess.TimeoutExpired:
-        return "[TIMEOUT] Command execution exceeded limit"
+        return {
+                "status": "timeout",
+                "command": command,
+            }
+        
 
     except Exception as e:
-        return f"[EXCEPTION] {e}"
-
+        return {
+                "status": "exception",
+                "command": command,
+                "error": str(e),
+            }
+        
 
 # @tool(
 #     args_schema=SaveMemoryArgs,

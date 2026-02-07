@@ -15,12 +15,12 @@ def get_weather(city: str) -> dict:
     c = normalize(city)
 
     if c in ["ha noi", "hanoi","Hà Nội"]:
-        return {"city": "Hà Nội", "temp": 30, "condition": "nắng"}
+        return {"city": "Hà Nội", "temp": 30, "condition": "nắng", "status_call_tool": "success"}
 
     if c in ["sai gon", "saigon"]:
-        return {"city": "TP.HCM", "temp": 33, "condition": "nóng"}
+        return {"city": "TP.HCM", "temp": 33, "condition": "nóng", "status_call_tool": "success"}
 
-    return {"error": "not_found", "city": city}
+    return {"error": "not_found", "city": city, "status_call_tool": "success"}
 
 @tool
 def get_news(topic: str) -> list[dict]:
