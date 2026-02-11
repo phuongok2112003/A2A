@@ -14,8 +14,10 @@ from services.chat_service import ChatService
 import asyncio
 from until.enum import EventName
 from schemas.base import Quesion
-
-
+from fastapi import APIRouter, UploadFile, File, Form
+from typing import Optional
+from middleware.middelware_app import LimitUploadSizeMiddleware
+from fastapi import Request, HTTPException
 bot_zalo = zalo_bot.Bot(settings.BOOT_ZALO_TOKEN)
 
 # bot_zalo.set_webhook(secret_token=settings.SECRET_TOKEN_WEBHOOK_ZALO, url= f"{ngrok_tunel_zalo_bot_webhook.public_url}/zalo/webhook")
@@ -44,7 +46,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Currency Agent Platform", lifespan=lifespan)
 
-
+app.add_middleware(LimitUploadSizeMiddleware)
 
 # normal APIs
 @app.get("/health")
@@ -119,12 +121,29 @@ async def call_agent_1():
     return {"message": "This is a call to Agent 1"}
 
 @app.post("/quesion")
-async def process_question(quesion: Quesion):
+async def process_question(  user_id: str = Form(...),
+    context_id: str = Form(...),
+    user_input_text: Optional[str] = Form(None),
+    user_input_url_photo: Optional[str] = Form(None), image: UploadFile = File(...)):
     chat_service = ChatService()
     await chat_service.init()
-    res = await chat_service.process_chat(user_id=quesion.user_id, context_id=quesion.context_id,
-                                              user_input_text= quesion.user_input_text,
-                                              user_input_photo = quesion.user_input_photo)
+
+    image_bytes: bytes | None = None
+
+    if image:
+        if image.content_type not in {"image/png", "image/jpeg", "image/webp"}:
+            raise HTTPException(400, "Unsupported image format")
+
+        image_bytes = await image.read()
+    
+
+    res = await chat_service.process_chat(
+        user_id=user_id,
+        context_id=context_id,
+        user_input_text=user_input_text,
+        user_input_url_photo=user_input_url_photo,
+        image_bytes=image_bytes
+    )
 
     return res
 if __name__ == "__main__":

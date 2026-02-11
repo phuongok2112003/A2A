@@ -17,7 +17,7 @@ from langgraph.cache.base import BaseCache
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.store.base import BaseStore
 from langgraph.types import Checkpointer
-
+from langchain.agents.middleware.types import AgentState
 from deepagents.backends import StateBackend
 from deepagents.backends.protocol import BackendFactory, BackendProtocol
 from deepagents.middleware.filesystem import FilesystemMiddleware
@@ -173,6 +173,7 @@ def create_deep_agent(
     *,
     system_prompt: str | SystemMessage | None = None,
     middleware: Sequence[AgentMiddleware] = (),
+    state_schema: AgentState| None = None,
     subagents: list[SubAgent | CompiledSubAgent] | None = None,
     skills: list[str] | None = None,
     memory: list[str] | None = None,
@@ -385,6 +386,7 @@ def create_deep_agent(
         model,
         system_prompt=final_system_prompt,
         tools=tools,
+        state_schema=state_schema,
         middleware=deepagent_middleware,
         response_format=response_format,
         context_schema=context_schema,

@@ -55,10 +55,12 @@ from until.process_mes import process_mess_interrupt
 from memory.memory_store import PineconeMemoryStore
 from common.create_sub_agent import list_sub_agents
 from common.export_models_llm import ModelsLLM
+from schemas.base import CustomAgentState
 # ===============================
 # System Prompt
 # ===============================
 import asyncio
+
 
 
 async def async_input(prompt: str) -> str:
@@ -70,7 +72,7 @@ Bạn là một AI Agent cấp cao trong hệ thống Agentic.
 Mục tiêu chính:
 - Trả lời chính xác câu hỏi của người dùng.
 - Sử dụng long-term memory để cá nhân hóa câu trả lời khi phù hợp.
-- Điều phối các agent khác khi cần thiết.
+- Điều phối các agent khác khi cần thiết. Hãy nhớ luôn gọi tool get_state để lấy được state hiện tại.
 
 ============================
 LONG-TERM MEMORY STRATEGY
@@ -303,7 +305,7 @@ class AgentCustom:
             )
         )
 
-        print(f"======Tạo Dispatcher Tool với các agent sau:\n{agents_desc_str}\n\n\n")
+        # print(f"======Tạo Dispatcher Tool với các agent sau:\n{agents_desc_str}\n\n\n")
 
         async def call_agent_impl(
             agent_name: str,
@@ -543,6 +545,10 @@ class AgentCustom:
             context_schema=Context,
             backend= make_backend,
             interrupt_on=self.interrupt_on_tool,
+            state_schema = CustomAgentState,
+            middleware=[
+                MiddlewareCustom()
+            ]
             # middleware=[
             #     SummarizationMiddleware(
             #         max_tokens_before_summary=self.max_tokens_before_summary,
@@ -598,7 +604,7 @@ class AgentCustom:
             log.error(f"Lỗi khi chạy agent: {e}  {traceback.format_exc()}")
             return f"Lỗi khi chạy agent: {e}"
 
-    async def run_astream(self, context_id: str, user_id:str =None, user_input_text: str = None, user_input_photo: str  = None):
+    async def run_astream(self, context_id: str, user_id:str =None, user_input_text: str = None, user_input_url_photo: str  = None, image_bytes: bytes = None):
         config = {
             "configurable": {"thread_id": context_id},
             "recursion_limit": self.recursion_limit,
@@ -614,12 +620,12 @@ class AgentCustom:
                 }
         
             )
-        if user_input_photo:
+        if user_input_url_photo:
            
            content.append(
                 {
                     "type": "text",
-                    "text": f"Miêu tả bức ảnh này: {user_input_photo}",
+                    "text": f"Miêu tả bức ảnh này: {user_input_url_photo}",
                 }
     
         )
@@ -627,7 +633,9 @@ class AgentCustom:
         if not content:
             raise ValueError("run_astream requires at least text or photo input")
 
-        input_payload = {"messages": [HumanMessage(content=content)]}
+        input_payload = {"messages": [HumanMessage(content=content)],
+                         "images" : "baseuy64"  
+                         }
         final_state = None
         try:
             while True:

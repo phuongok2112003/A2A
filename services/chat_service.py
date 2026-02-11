@@ -28,13 +28,15 @@ class ChatService:
         user_input_text: str,
         context_id: str,
         user_id: str,
-        user_input_photo:str = None
+        user_input_url_photo:str | None= None,
+        image_bytes :bytes | None = None
     ) -> None:
 
         async for res in self.agent.run_astream(
             user_input_text=user_input_text,
             context_id=context_id,
             user_id=user_id,
-            user_input_photo= user_input_photo if user_input_photo else None
+            user_input_url_photo= user_input_url_photo if user_input_url_photo else None,
+            image_bytes = image_bytes if image_bytes else None
         ):
             return res

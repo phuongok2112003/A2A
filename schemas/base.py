@@ -2,9 +2,15 @@ from pydantic import BaseModel, Field, model_validator
 from typing import Optional, Dict, Any, List, Literal
 from a2a.types import AgentSkill
 from a2a.types import Message
-
+from fastapi import APIRouter, UploadFile, File, Form
+from langchain.agents.middleware.types import AgentState
 class Context(BaseModel):
     user_id: str
+
+
+class CustomAgentState(AgentState):
+    images : bytes | None = None
+
 class AgentServer(BaseModel):
     define_public_skills : List[AgentSkill]
     define_private_skills : List[AgentSkill]
@@ -60,7 +66,7 @@ class LongMemory(BaseModel):
     )
 class Quesion(BaseModel):
     user_input_text:str | None = None
-    user_input_photo:str | None = None
+    user_input_url_photo:str | None = None
     user_id:str
     context_id:str
 

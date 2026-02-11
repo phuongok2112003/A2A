@@ -16,7 +16,7 @@ from pathlib import Path
 from langchain_core.messages import HumanMessage
 from common.export_models_llm import ModelsLLM
 import os, json
-
+from langchain_core.tools import InjectedToolArg
 @tool(args_schema=RunShellArgs)
 def run_shell(command: str, timeout: int = 30) -> dict:
     """
@@ -277,10 +277,16 @@ async def load_image(
     except Exception as e:
         return f"Lỗi khi load ảnh: {str(e)}. Vui lòng kiểm tra URL/path."
 
+@tool(description="Đây là tool lấy state hiện tại của graph")
+def get_state(
+    runtime: Annotated[ToolRuntime, InjectedToolArg],
+):
+    state = runtime.state
+    print("STATE keys:", list(state.keys()))
+    return list(state.keys())
 
 
-
-tools = [ run_shell,]  ### Attach list tool for agent
+tools = [ run_shell,get_state]  ### Attach list tool for agent
 interrupt_on_tool = [
     run_shell
 ]  ### Attach list tool for agent to interruput when call tool
