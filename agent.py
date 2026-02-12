@@ -465,6 +465,7 @@ class AgentCustom:
                         "mappings": {
                             "properties": {
                                 "thread_id": {"type": "keyword"},
+                                "user_id": {"type": "keyword"},
                                 "checkpoint_id": {"type": "keyword"},
                                 "ts": {"type": "date"},
                                 "parent_config": {"type": "keyword"},
@@ -606,7 +607,10 @@ class AgentCustom:
 
     async def run_astream(self, context_id: str, user_id:str =None, user_input_text: str = None, user_input_url_photo: str  = None, image_bytes: bytes = None):
         config = {
-            "configurable": {"thread_id": context_id},
+            "configurable": {
+                "thread_id": context_id,
+                "user_id": user_id
+            },
             "recursion_limit": self.recursion_limit,
         }
 

@@ -87,9 +87,12 @@ class ElasticsearchCheckpointSaver(BaseCheckpointSaver[str]):
         Returns:
             CheckpointTuple nếu tìm thấy, None nếu không
         """
+        print("\n\nNhảy vào get_tuple\n\n")
         try:
             configurable = self._extract_configurable(config)
             thread_id = configurable.get("thread_id")
+            user_id = configurable.get("user_id")
+            print(f"User_id {configurable.get("user_id")}")
             checkpoint_id = configurable.get("checkpoint_id")
 
             if not thread_id:
@@ -98,7 +101,7 @@ class ElasticsearchCheckpointSaver(BaseCheckpointSaver[str]):
 
             # Nếu có checkpoint_id cụ thể, lấy checkpoint đó
             if checkpoint_id:
-                doc_id = f"{thread_id}::{checkpoint_id}"
+                doc_id = f"{user_id}::{thread_id}::{checkpoint_id}"
                 try:
                     result = self.es.get(index=self.index, id=doc_id)
                     doc = result["_source"]
@@ -112,6 +115,7 @@ class ElasticsearchCheckpointSaver(BaseCheckpointSaver[str]):
                 "query": {
                     "bool": {
                         "must": [
+                            {"term": {"user_id": user_id}},
                             {"term": {"thread_id": thread_id}},
                             {"term": {"type": "checkpoint"}}   # <<< FIX QUAN TRỌNG
                         ]
@@ -187,6 +191,7 @@ class ElasticsearchCheckpointSaver(BaseCheckpointSaver[str]):
         Yields:
             CheckpointTuple matching criteria
         """
+        print("\n\nNhảy vào list\n\n")
         try:
             must_conditions = []
 
@@ -194,9 +199,12 @@ class ElasticsearchCheckpointSaver(BaseCheckpointSaver[str]):
             if config:
                 configurable = self._extract_configurable(config)
                 thread_id = configurable.get("thread_id")
+                user_id = configurable.get("user_id")
+                print(f"User_id {configurable.get("user_id")}")
                 if thread_id:
                     must_conditions.append({"term": {"thread_id": thread_id}})
-
+                if user_id:
+                    must_conditions.append({"term": {"user_id": user_id}})
             # Filter by metadata - not implemented in this simple version
             # You can enhance this based on your needs
 
@@ -244,10 +252,12 @@ class ElasticsearchCheckpointSaver(BaseCheckpointSaver[str]):
         Returns:
             RunnableConfig đã cập nhật với checkpoint_id mới
         """
+        print("\n\nNhảy vào put\n\n")
         try:
             configurable = self._extract_configurable(config)
             thread_id = configurable.get("thread_id")
-            
+            user_id = configurable.get("user_id")
+            print(f"User_id {configurable.get("user_id")}")
             if not thread_id:
                 raise ValueError("thread_id is required in config")
 
@@ -266,6 +276,7 @@ class ElasticsearchCheckpointSaver(BaseCheckpointSaver[str]):
 
             doc = {
                 "thread_id": thread_id,
+                "user_id": user_id,
                 "checkpoint_id": checkpoint_id,
                 "ts": datetime.utcnow().isoformat(),
                 "checkpoint":self._encode(checkpoint),
@@ -274,7 +285,7 @@ class ElasticsearchCheckpointSaver(BaseCheckpointSaver[str]):
                 "type": "checkpoint",  
             }
 
-            doc_id = f"{thread_id}::{checkpoint_id}"
+            doc_id = f"{user_id}::{thread_id}::{checkpoint_id}"
             self.es.index(index=self.index, id=doc_id, document=doc, refresh=True)
 
             logger.debug(f"Saved checkpoint {doc_id}")
@@ -282,7 +293,7 @@ class ElasticsearchCheckpointSaver(BaseCheckpointSaver[str]):
             return {
                 "configurable": {
                     "thread_id": thread_id,
-                    "checkpoint_id": checkpoint_id,
+                    "checkpoint_id": checkpoint_id, 
                 }
             }
 
@@ -370,11 +381,13 @@ class ElasticsearchCheckpointSaver(BaseCheckpointSaver[str]):
             task_id: ID của task
             task_path: Path của task
         """
+        print("\n\nNhảy vào put_writes\n\n")
         try:
             configurable = self._extract_configurable(config)
             thread_id = configurable.get("thread_id")
+            user_id = configurable.get("user_id")
             checkpoint_id = configurable.get("checkpoint_id", "latest")
-
+            print(f"User_id {configurable.get("user_id")}")
             if not thread_id:
                 logger.warning("No thread_id in config for put_writes")
                 return
@@ -395,6 +408,7 @@ class ElasticsearchCheckpointSaver(BaseCheckpointSaver[str]):
 
             doc = {
                 "thread_id": thread_id,
+                "user_id":user_id,
                 "checkpoint_id": checkpoint_id,
                 "task_id": task_id,
                 "task_path": task_path,
@@ -419,6 +433,7 @@ class ElasticsearchCheckpointSaver(BaseCheckpointSaver[str]):
         Args:
             thread_id: ID của thread cần xóa
         """
+        print("\n\nNhảy vào delete_thread\n\n")
         try:
             query = {"query": {"term": {"thread_id": thread_id}}}
             self.es.delete_by_query(index=self.index, body=query, refresh=True)
@@ -432,6 +447,7 @@ class ElasticsearchCheckpointSaver(BaseCheckpointSaver[str]):
 
     async def aget_tuple(self, config: RunnableConfig) -> CheckpointTuple | None:
         """Async version of get_tuple"""
+        print("\n\nNhảy vào aget_tuple\n\n")
         return self.get_tuple(config)
 
     async def alist(
@@ -443,6 +459,7 @@ class ElasticsearchCheckpointSaver(BaseCheckpointSaver[str]):
         limit: int | None = None,
     ) -> AsyncIterator[CheckpointTuple]:
         """Async version of list"""
+        print("\n\nNhảy vào alist\n\n")
         for item in self.list(config, filter=filter, before=before, limit=limit):
             yield item
 
@@ -454,6 +471,7 @@ class ElasticsearchCheckpointSaver(BaseCheckpointSaver[str]):
         new_versions: ChannelVersions,
     ) -> RunnableConfig:
         """Async version of put"""
+        print("\n\nNhảy vào aput\n\n")
         return self.put(config, checkpoint, metadata, new_versions)
 
     async def aput_writes(
@@ -464,8 +482,10 @@ class ElasticsearchCheckpointSaver(BaseCheckpointSaver[str]):
         task_path: str = "",
     ) -> None:
         """Async version of put_writes"""
+        print("\n\nNhảy vào aput_writes\n\n")
         self.put_writes(config, writes, task_id, task_path)
 
     async def adelete_thread(self, thread_id: str) -> None:
         """Async version of delete_thread"""
+        print("\n\nNhảy vào adelete_thread\n\n")
         self.delete_thread(thread_id)
