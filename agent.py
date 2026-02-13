@@ -55,6 +55,7 @@ from until.process_mes import process_mess_interrupt
 from memory.memory_store import PineconeMemoryStore
 from common.create_sub_agent import list_sub_agents
 from common.export_models_llm import ModelsLLM
+from config.es import init_elasticsearch_sync
 from schemas.base import CustomAgentState
 # ===============================
 # System Prompt
@@ -455,57 +456,15 @@ class AgentCustom:
 
         # Memory với Elasticsearch
         print("Connecting to Elasticsearch at", settings.ELASTICSEARCH_URL)
-        es = Elasticsearch(settings.ELASTICSEARCH_URL)
+        es = init_elasticsearch_sync(self.index_elastic)
 
-        try:
-            if not es.indices.exists(index=self.index_elastic):
-                es.indices.create(
-                    index=self.index_elastic,
-                    body={
-                        "mappings": {
-                            "properties": {
-                                "thread_id": {"type": "keyword"},
-                                "user_id": {"type": "keyword"},
-                                "checkpoint_id": {"type": "keyword"},
-                                "ts": {"type": "date"},
-                                "parent_config": {"type": "keyword"},
-                                "type": {"type": "keyword"},
-                                # Object với nested structure
-                                "checkpoint": {
-                                    "properties": {
-                                        "type": {"type": "keyword"},
-                                        "blob": {"type": "text", "index": False},
-                                    }
-                                },
-                                "metadata": {
-                                    "properties": {
-                                        "type": {"type": "keyword"},
-                                        "blob": {"type": "text", "index": False},
-                                    }
-                                },
-                                "writes": {
-                                    "properties": {
-                                        "type": {"type": "keyword"},
-                                        "blob": {"type": "text", "index": False},
-                                    }
-                                },
-                                # Các trường cho put_writes
-                                "task_id": {"type": "keyword"},
-                                "task_path": {"type": "keyword"},
-                            }
-                        }
-                    },
-                )
-
-        except Exception as e:
-            raise ValueError(f"Elasticsearch connection error: {e}")
 
         # Memory cho mỗi thread (mỗi context_id)
         # checkpointer = MemorySaver()
 
         
         
-        checkpointer = ElasticsearchCheckpointSaver(es=es, index=self.index_elastic)
+        checkpointer = ElasticsearchCheckpointSaver(es=es, index=self.index_elastic, status=True)
 
         store = PineconeMemoryStore(api_key=settings.PINECONE_KEY)
         # store = InMemoryStore()
@@ -538,13 +497,13 @@ class AgentCustom:
             tools=self.tools,
             system_prompt=self.system_prompt,
             checkpointer=checkpointer,
-            store=store,
+            # store=store,
             skills=[f"{settings.BASE_DIR}/skills"],
             name="gemini-agent",
             debug=True,
             subagents=self.sub_agents,
             context_schema=Context,
-            backend= make_backend,
+            # backend= make_backend,
             interrupt_on=self.interrupt_on_tool,
             state_schema = CustomAgentState,
             middleware=[

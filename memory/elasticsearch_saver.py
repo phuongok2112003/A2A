@@ -44,10 +44,11 @@ class ElasticsearchCheckpointSaver(BaseCheckpointSaver[str]):
         ```
     """
 
-    def __init__(self, es: Elasticsearch, index: str = "langgraph_checkpoints"):
+    def __init__(self, es: Elasticsearch, index: str = "langgraph_checkpoints",status: bool = True):
         super().__init__()
         self.es = es
         self.index = index
+        self.status = status
 
 
     def _extract_configurable(self, config: RunnableConfig) -> dict:
@@ -284,11 +285,11 @@ class ElasticsearchCheckpointSaver(BaseCheckpointSaver[str]):
                 "parent_config": parent_checkpoint_id,
                 "type": "checkpoint",  
             }
+            if self.status:
+                doc_id = f"{user_id}::{thread_id}::{checkpoint_id}"
+                self.es.index(index=self.index, id=doc_id, document=doc, refresh=True)
 
-            doc_id = f"{user_id}::{thread_id}::{checkpoint_id}"
-            self.es.index(index=self.index, id=doc_id, document=doc, refresh=True)
-
-            logger.debug(f"Saved checkpoint {doc_id}")
+                print(f"Saved checkpoint {doc_id}")
 
             return {
                 "configurable": {
@@ -416,11 +417,11 @@ class ElasticsearchCheckpointSaver(BaseCheckpointSaver[str]):
                 "ts": datetime.utcnow().isoformat(),
                 "type": "writes"
             }
-
-            doc_id = f"{thread_id}::{checkpoint_id}::writes::{task_id}"
-            self.es.index(index=self.index, id=doc_id, document=doc, refresh=True)
-            
-            logger.debug(f"Saved writes for {doc_id}")
+            if self.status:
+                doc_id = f"{thread_id}::{checkpoint_id}::writes::{task_id}"
+                self.es.index(index=self.index, id=doc_id, document=doc, refresh=True)
+                
+                print(f"Saved writes for {doc_id}")
 
         except Exception as e:
             logger.error(f"Error putting writes: {e}", exc_info=True)

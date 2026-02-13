@@ -10,6 +10,51 @@ from langchain.agents.middleware import InterruptOnConfig
 from langchain.agents.middleware.types import AgentMiddleware
 from common.tool_common import internet_search, load_image
 from common.export_models_llm import ModelsLLM
+from memory.elasticsearch_saver import ElasticsearchCheckpointSaver
+from config.es import init_elasticsearch_sync
+from langchain_core.messages import HumanMessage
+from langchain.agents.middleware import TodoListMiddleware, ModelFallbackMiddleware
+from schemas.sub_agent import SubAgentCustomCreate
+
+
+async def create_sub_agent(index_elastic, sub_agent: SubAgentCustomCreate, status : bool = True, data_context: list[str] | None = None):
+    es = init_elasticsearch_sync(index_elastic=index_elastic)
+    checkpointer = ElasticsearchCheckpointSaver(es=es, index=index_elastic, status=status)
+    agent = create_agent(
+        model=ModelsLLM.llm_ollama_gpt,
+        system_prompt=sub_agent.system_prompt,
+        checkpointer=checkpointer,
+        middleware=[
+            TodoListMiddleware(),
+            ModelFallbackMiddleware(first_model=ModelsLLM.llm_openai),
+        ]
+    )
+    if data_context:
+        config = {
+            "configurable": {
+                "thread_id": sub_agent.project_id + sub_agent.category_id,
+                "user_id": sub_agent.project_id + sub_agent.category_id
+            },
+            "recursion_limit": 10,
+        }
+
+        for context in data_context:
+            input_payload = {"messages": [
+                HumanMessage(content=f"Phân tích cho tôi tài liệu của {sub_agent.description}: " + context)],
+
+                             }
+            await agent.ainvoke(
+                input_payload,
+                config
+            )
+        return None
+
+    return agent , CompiledSubAgent(
+        description=sub_agent.description,
+        name=sub_agent.name,
+        runnable=agent
+    )
+
 
 list_sub_agents = [
     SubAgent(
