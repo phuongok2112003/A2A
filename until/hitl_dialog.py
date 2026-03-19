@@ -1,41 +1,88 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 
 
 class HitlDialog:
-    def __init__(self, hitl_request: dict):
-        self.hitl_request = hitl_request
-        self.result: List[Dict[str, Any]] | None = None
+    """
+    Human-in-the-loop approval dialog driven by Interrupt payload.
+    """
+
+    def __init__(self, interrupt: Any):
+        """
+        interrupt: Interrupt object extracted from __interrupt__[0]
+        """
+
+        self.interrupt = interrupt
+        self.hitl_payload = self._parse_interrupt(interrupt)
+
+        self.result: Optional[List[Dict[str, Any]]] = None
+        self.sections: List[Dict[str, Any]] = []
 
         self.root = tk.Tk()
         self.root.title("Agent Approval Required")
-        self.root.geometry("600x540")
+        self.root.geometry("640x560")
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
         self._build_ui()
 
     # -----------------------------
-    # UI Construction
+    # Interrupt parsing
+    # -----------------------------
+
+    def _parse_interrupt(self, interrupt: Any) -> Dict[str, Any]:
+        """
+        Normalize Interrupt payload into UI-friendly structure.
+        """
+
+        if not hasattr(interrupt, "value"):
+            raise ValueError("Invalid Interrupt object")
+
+        value = interrupt.value
+
+        action_requests = value.get("action_requests", [])
+        review_configs = value.get("review_configs", [])
+
+        review_map = {
+            cfg["action_name"]: cfg.get(
+                "allowed_decisions",
+                ["approve", "reject", "edit"],
+            )
+            for cfg in review_configs
+        }
+
+        for req in action_requests:
+            req["allowed_decisions"] = review_map.get(
+                req["name"],
+                ["approve", "reject", "edit"],
+            )
+
+        return {"action_requests": action_requests}
+
+    # -----------------------------
+    # UI construction
     # -----------------------------
 
     def _build_ui(self):
+
         container = ttk.Frame(self.root, padding=12)
         container.pack(fill="both", expand=True)
 
         ttk.Label(
             container,
-            text="Agent requests approval for actions",
+            text="Agent requires approval",
             font=("Segoe UI", 12, "bold"),
         ).pack(anchor="w", pady=(0, 12))
 
-        self.sections: List[Dict[str, Any]] = []
-
-        for req in self.hitl_request["action_requests"]:
+        for req in self.hitl_payload["action_requests"]:
             section = self._build_action_section(container, req)
             self.sections.append(section)
 
-        ttk.Button(container, text="Submit", command=self._submit).pack(pady=12)
+        ttk.Button(
+            container,
+            text="Submit Decision",
+            command=self._submit,
+        ).pack(pady=12)
 
     def _build_action_section(self, parent: ttk.Frame, req: dict):
 
@@ -46,20 +93,18 @@ class HitlDialog:
 
         ttk.Label(
             wrapper,
-            text=str(req["args"]),
+            text=str(req.get("args", {})),
             foreground="#555",
-            wraplength=560,
+            wraplength=600,
         ).pack(anchor="w", pady=(0, 8))
 
-        # -----------------------------
-        # Radio group
-        # -----------------------------
-        decision_var = tk.StringVar(value="approve")
+        allowed = req.get("allowed_decisions", ["approve", "reject", "edit"])
+        decision_var = tk.StringVar(value=allowed[0])
 
         radios = ttk.Frame(wrapper)
         radios.pack(anchor="w")
 
-        for v in ("approve", "reject", "edit"):
+        for v in allowed:
             ttk.Radiobutton(
                 radios,
                 text=v.capitalize(),
@@ -67,52 +112,37 @@ class HitlDialog:
                 value=v,
             ).pack(side="left", padx=8)
 
-        # -----------------------------
-        # Dynamic area
-        # -----------------------------
         dynamic_frame = ttk.Frame(wrapper)
         dynamic_frame.pack(fill="x", pady=6)
 
-        # Reject widgets
         reject_label = ttk.Label(dynamic_frame, text="Reject reason:")
         reject_var = tk.StringVar()
         reject_entry = ttk.Entry(dynamic_frame, textvariable=reject_var)
 
-        # Edit widgets
         edit_rows: Dict[str, ttk.Frame] = {}
         edit_vars: Dict[str, tk.StringVar] = {}
 
-        for key, val in req["args"].items():
+        for key, val in req.get("args", {}).items():
             row = ttk.Frame(dynamic_frame)
 
             ttk.Label(row, text=key, width=18).pack(side="left")
 
             v = tk.StringVar(value=str(val))
-            ent = ttk.Entry(row, textvariable=v)
-            ent.pack(side="left", fill="x", expand=True)
+            ttk.Entry(row, textvariable=v).pack(
+                side="left", fill="x", expand=True
+            )
 
             edit_rows[key] = row
             edit_vars[key] = v
 
-        # Hide all initially
-        reject_label.pack_forget()
-        reject_entry.pack_forget()
-
-        for row in edit_rows.values():
-            row.pack_forget()
-
-        # -----------------------------
-        # Radio handler
-        # -----------------------------
-
-        def on_change(*_):
-
-            # Hide everything
+        def hide_all():
             reject_label.pack_forget()
             reject_entry.pack_forget()
-
             for row in edit_rows.values():
                 row.pack_forget()
+
+        def on_change(*_):
+            hide_all()
 
             if decision_var.get() == "reject":
                 reject_label.pack(anchor="w")
@@ -124,6 +154,8 @@ class HitlDialog:
 
         decision_var.trace_add("write", on_change)
 
+        hide_all()
+
         return {
             "req": req,
             "decision_var": decision_var,
@@ -132,7 +164,7 @@ class HitlDialog:
         }
 
     # -----------------------------
-    # Submit
+    # Submission
     # -----------------------------
 
     def _submit(self):
@@ -140,6 +172,7 @@ class HitlDialog:
         decisions: List[Dict[str, Any]] = []
 
         for section in self.sections:
+
             req = section["req"]
             decision = section["decision_var"].get()
 
@@ -147,7 +180,9 @@ class HitlDialog:
                 decisions.append({"type": "approve"})
 
             elif decision == "reject":
+
                 reason = section["reject_var"].get().strip()
+
                 if not reason:
                     messagebox.showerror(
                         "Validation error",
@@ -156,17 +191,15 @@ class HitlDialog:
                     return
 
                 decisions.append(
-                    {
-                        "type": "reject",
-                        "message": reason,
-                    }
+                    {"type": "reject", "message": reason}
                 )
 
             elif decision == "edit":
-                args: Dict[str, Any] = {}
 
-                for k, v in section["edit_vars"].items():
-                    args[k] = v.get()
+                args = {
+                    k: v.get()
+                    for k, v in section["edit_vars"].items()
+                }
 
                 decisions.append(
                     {
@@ -181,10 +214,14 @@ class HitlDialog:
         self.result = decisions
         self.root.destroy()
 
+    # -----------------------------
+    # Window control
+    # -----------------------------
+
     def _on_close(self):
         messagebox.showwarning(
             "Approval required",
-            "You must submit a decision before closing.",
+            "Submit a decision before closing.",
         )
 
     # -----------------------------

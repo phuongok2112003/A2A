@@ -17,7 +17,8 @@ async def main():
     
     agent.get_info_tool()
     
-    user_input = input("Bạn: ")
+    # user_input = input("Bạn: ")
+    user_input = "Bạn hãy clone project https://github.com/phuongok2112003/shop-online.git cho tôi"
     # response = await agent.run(user_input = user_input, context_id=context_id)
     # print("Trợ lý:", response)
 

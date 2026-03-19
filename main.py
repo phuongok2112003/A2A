@@ -124,7 +124,7 @@ async def call_agent_1():
 async def process_question(  user_id: str = Form(...),
     context_id: str = Form(...),
     user_input_text: Optional[str] = Form(None),
-    user_input_url_photo: Optional[str] = Form(None), image: UploadFile = File(...)):
+    user_input_url_photo: Optional[str] = Form(None), image: Optional[UploadFile] = File(None) ):
     chat_service = ChatService()
     await chat_service.init()
 

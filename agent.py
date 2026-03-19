@@ -564,7 +564,21 @@ class AgentCustom:
             log.error(f"Lỗi khi chạy agent: {e}  {traceback.format_exc()}")
             return f"Lỗi khi chạy agent: {e}"
 
-    async def run_astream(self, context_id: str, user_id:str =None, user_input_text: str = None, user_input_url_photo: str  = None, image_bytes: bytes = None):
+    async def run_astream(self, context_id: str, user_id: str = None, 
+                                        user_input_text: str = None, user_input_url_photo: str = None, 
+                                        image_bytes: bytes = None):
+        """
+        BEST PRACTICE: Clear old tool call when user edits, then resume properly
+        
+        Flow:
+        1. User asks: "clone shop-online.git"
+        2. Agent → tool_call(shop-online.git)
+        3. INTERRUPT
+        4. User edits → "Actually clone nghichNCKH.git"
+        5. Remove old tool_call from messages
+        6. Resume with edited tool_call
+        7. ✅ Execute nghichNCKH.git, NO SECOND INTERRUPT
+        """
         config = {
             "configurable": {
                 "thread_id": context_id,
@@ -576,61 +590,191 @@ class AgentCustom:
         content: list[dict] = []
 
         if user_input_text:
-            content.append(
-                {
-                    "type": "text",
-                    "text": user_input_text ,
-                }
+            content.append({
+                "type": "text",
+                "text": user_input_text,
+            })
         
-            )
         if user_input_url_photo:
-           
-           content.append(
-                {
-                    "type": "text",
-                    "text": f"Miêu tả bức ảnh này: {user_input_url_photo}",
-                }
-    
-        )
+            content.append({
+                "type": "text",
+                "text": f"Miêu tả bức ảnh này: {user_input_url_photo}",
+            })
 
         if not content:
             raise ValueError("run_astream requires at least text or photo input")
 
-        input_payload = {"messages": [HumanMessage(content=content)],
-                         "images" : "baseuy64"  
-                         }
+        input_payload = {
+            "messages": [HumanMessage(content=content)],
+            "images": "baseuy64"
+        }
+        
         final_state = None
+        state = self.agent.get_state(config=config)
+      
         try:
+            interrupted = False
+            completed = False
+            # ⭐ VÒNG LẶP CHÍNH
             while True:
-                interrupted = False
-
+                
+                # Stream agent execution
                 async for mode, payload in self.agent.astream(
                     input_payload,
                     config=config,
                     stream_mode=["values", "updates", "messages"],
                     context={"user_id": user_id} if user_id else None
-                ):
-                    # giữ state cuối
+                ):  
+                    
+                    
                     if mode == "values":
                         final_state = payload
-
+                    
+                  
                     # ===== INTERRUPT =====
                     if "__interrupt__" in payload:
                         interrupted = True
                         interrupt_event = payload["__interrupt__"][0]
-                        hitl_request = interrupt_event.value
-                        decisions = Command(
-                            resume={
-                                "decisions": await process_mess_interrupt(
-                                    hitl_request=hitl_request
-                                )
-                            }
+                        
+                        print(f"\n🔴 INTERRUPT DETECTED")
+                        print(f"   Tool: {interrupt_event.value['action_requests'][0]['name']}")
+                        print(f"   Original Args: {interrupt_event.value['action_requests'][0]['args']}")
+                        
+                        # Lấy user decision
+                        decisions = await process_mess_interrupt(
+                            hitl_request=interrupt_event
                         )
-                        input_payload = decisions
+                        
+                        print(f"✅ User decision: {decisions}\n")
+                        
+                        # ⭐ CRITICAL: Xử lý khác nhau dựa trên user decision
+                        decision_type = decisions[0].get('type') if decisions else 'approve'
+                        
+                        if decision_type == 'edit':
+                            # User thay đổi tool args → tạo command để gọi tool trực tiếp
+                            edited_action = decisions[0].get('edited_action')
+                            tool_name = edited_action.get('name')
+                            tool_args = edited_action.get('args')
+
+                            print(f"📝 User edited action:")
+                            print(f"   Tool: {tool_name}")
+                            print(f"   New Args: {tool_args}")
+
+                            # Lấy state hiện tại
+                            current_state = self.agent.get_state(config=config)
+                            messages = current_state.values.get("messages", [])
+
+                            print(f"   Original messages count: {len(messages)}")
+                            for i, msg in enumerate(messages):
+                                print(f"     [{i}] {type(msg).__name__}: {msg.content[:100] if msg.content else 'no content'}...")
+
+                            # Giữ lại chỉ HumanMessage cuối cùng (không có AIMessage/ToolMessage)
+                            last_human_idx = -1
+                            for i, msg in enumerate(messages):
+                                if isinstance(msg, HumanMessage):
+                                    last_human_idx = i
+
+                            if last_human_idx >= 0:
+                                # Giữ lại chỉ đến HumanMessage cuối cùng
+                                cleaned_messages = messages[:last_human_idx + 1]
+                            else:
+                                cleaned_messages = []
+
+                            print(f"   Removed old AIMessage/ToolMessage with tool_call")
+                            print(f"   Message count before: {len(messages)}, after: {len(cleaned_messages)}")
+
+                           
+                            # Tạo message với command để agent biết tool nào sẽ được gọi
+                            command_content = f"""[TOOL CALL COMMAND]
+Tool: {tool_name}
+Args: {tool_args}
+
+Hãy thực thi tool này với các tham số đã sửa."""
+
+                            # Thêm command message để agent hiểu
+                            input_payload = {
+                                "messages": cleaned_messages + [HumanMessage(content=command_content)],
+                                "images": "baseuy64"
+                            }
+
+                            # Đặt tool_args vào config để node thực thi tool có thể dùng
+                            config["configurable"]["__tool_override__"] = {
+                                "name": tool_name,
+                                "args": tool_args
+                            }
+
+                            print(f"   Command content: {command_content}")
+                            print(f"   Tool override set in config: {config['configurable']['__tool_override__']}")
+                            
+                        elif decision_type == 'approve':
+                            # User chấp nhận → resume bình thường
+                            print(f"✅ Approving tool execution")
+                            command = Command(
+                                resume={
+                                    "decisions": decisions
+                                }
+                            )
+                            input_payload = command
+                            
+                        else:  # reject
+                            # User từ chối → dừng
+                            print(f"❌ User rejected tool execution")
+                            yield {
+                                "type": "info",
+                                "message": "Tool execution rejected by user"
+                            }
+                            return
+
+                        # Nếu edit, tiếp tục vòng lặp để invoke agent với input mới
+                        if decision_type == 'edit':
+                            print("🔄 Tiếp tục vòng lặp với input mới sau edit")
+                            print(f"   Input payload messages: {len(input_payload.get('messages', []))}")
+                            for i, msg in enumerate(input_payload.get('messages', [])):
+                                print(f"     [{i}] {type(msg).__name__}: {msg.content[:100] if msg.content else 'no content'}...")
+
+                            # Clear tool override sau khi dùng
+                            if "__tool_override__" in config.get("configurable", {}):
+                                del config["configurable"]["__tool_override__"]
+                            continue
+
+                        # Break khỏi stream (cho approve hoặc reject)
+                        interrupted = False  # Reset interrupted cho lần lặp tiếp theo
                         break
 
+                print("Thoat ra khoi stream")
+
+                # ===== KIEM TRA DA HOAN THANH CHƯA =====
+                # Nếu final_state có AIMessage cuối cùng không có tool_calls
+                # và không có pending writes, thì đã hoàn thành
+                if final_state:
+                    messages = final_state.get("messages", [])
+                    if messages:
+                        last_msg = messages[-1]
+                        if isinstance(last_msg, AIMessage):
+                            # AIMessage cuối cùng không có tool_calls = đã hoàn thành
+                            if not last_msg.tool_calls:
+                                print("✅ Task đã hoàn thành - AIMessage cuối không có tool_calls")
+                                completed = True
+                                break
+
+                # Nếu KHÔNG có interrupt → kết thúc
                 if not interrupted:
+                    print("✅Không có interrupt, sẽ break vòng lặp")
+                    # Kiểm tra state hiện tại có interrupt hay không
+                    final_state_check = self.agent.get_state(config=config)
+                    print(f"   State next: {final_state_check.next}")
+                    print(f"   State interrupts: {final_state_check.interrupts}")
+
+                    # Nếu state.next rỗng = agent đã hoàn thành
+                    if not final_state_check.next:
+                        print("✅ State.next rỗng - agent đã hoàn thành")
+                        completed = True
                     break
+
+                # Reset interrupted cho lần lặp tiếp theo (nếu không completed)
+                if not completed:
+                    interrupted = False
+            
         except GraphRecursionError as e:
             log.exception("LangGraph recursion overflow")
             yield {
@@ -640,16 +784,289 @@ class AgentCustom:
 
         except Exception as e:
             log.exception("Unhandled agent exception")
+            log.error(f"Traceback: {traceback.format_exc()}")
             yield {
                 "type": "error",
                 "message": "Hệ thống gặp lỗi nội bộ."
             }
-       
-                
 
         # ===== FINAL ANSWER =====
+        if final_state:
+            # Lấy AIMessage cuối cùng (đã được filter trong vòng lặp)
+            for msg in reversed(final_state["messages"]):
+                if isinstance(msg, AIMessage):
+                    # Check nếu AIMessage này đã hoàn thành (không có tool_calls hoặc tool_calls rỗng)
+                    if not msg.tool_calls:
+                        yield msg.content
+                        return
+                    else:
+                        # AIMessage có tool_calls - có nghĩa là đang waiting for tool execution
+                        # Không yield content này
+                        pass
+
+            # Nếu không tìm thấy AIMessage hoàn thành, try tìm content từ AIMessage gần nhất
+            for msg in reversed(final_state["messages"]):
+                if isinstance(msg, AIMessage) and msg.content:
+                    yield msg.content
+                    return
+
+    async def run_astream_fixed(self,  context_id: str, user_id:str =None, user_input_text: str = None, user_input_url_photo: str  = None, image_bytes: bytes = None):
+        config = {
+            "configurable": {
+                "thread_id": context_id,
+                "user_id": user_id
+            },
+            "recursion_limit": self.recursion_limit,
+        }
+
+        content = []
+        if user_input_text:
+            content.append({"type": "text", "text": user_input_text})
+        if user_input_url_photo:
+            content.append({"type": "text", "text": f"Miêu tả bức ảnh: {user_input_url_photo}"})
+        
+        if not content:
+            raise ValueError("Cần ít nhất text hoặc photo input")
+
+        initial_input = {"messages": [HumanMessage(content=content)]}
+        
+        final_state = None
+        current_input = initial_input
+        
+        try:
+            while True:
+                has_interrupt = False
+                
+                # Stream agent execution
+                async for mode, payload in self.agent.astream(
+                    current_input,
+                    config=config,
+                    stream_mode=["values", "updates", "messages"],
+                    context={"user_id": user_id} if user_id else None
+                ):
+                    if mode == "values":
+                        final_state = payload
+                       
+                    
+                    # Kiểm tra interrupt SAU khi stream xong 1 super-step
+                    current_state = self.agent.get_state(config=config)
+                    messages = current_state.values.get("messages", [])
+                    if "__interrupt__" in payload:
+                        has_interrupt = True
+                        interrupt_event = payload["__interrupt__"][0]
+                        print(f"🔴 INTERRUPT: {interrupt_event.value['action_requests']}")
+                        
+                        # Xử lý interrupt
+                        decisions = await process_mess_interrupt(
+                            hitl_request=interrupt_event
+                        )
+                        
+                        # Decide cách resume
+
+                        edited_action = decisions[0].get('edited_action')
+                        tool_name = edited_action.get('name')
+                        tool_args = edited_action.get('args')
+
+                        print(f"📝 User edited action:")
+                        print(f"   Tool: {tool_name}")
+                        print(f"   New Args: {tool_args}")
+                        decision_type = decisions[0].get('type') if decisions else 'approve'
+                        if decision_type == "approve":
+                            current_input = Command(resume={"decisions": decisions})
+                        elif decision_type == "edit":
+                            # User chỉnh sửa → xóa state cũ, input lại
+                                  # Tạo message với command để agent biết tool nào sẽ được gọi
+                            command_content = f"""Toi muốn chạy tool này với 
+                            [TOOL CALL COMMAND]
+Tool: {tool_name}
+Args: {tool_args}
+
+Hãy thực thi tool này với các tham số đã sửa. 
+***Có thể các tham số mới có thể thay thế ý định ban đầu của tôi nhưng hãy chạy tool này với tham só này***"""
+                          
+                            # self.agent.update_state(config=config, v)
+                            msg = (HumanMessage(
+                                content=[{"type": "text", "text": command_content}]
+                            ))
+                            self.agent.update_state(config=config, values={"messages": [msg]})
+                            # current_input = {"messages": new_messages}
+                        else:  # reject
+                            # Dừng lại, không tiếp tục
+                            reason = decisions[0].get('message')
+                            msg = (HumanMessage(
+                                content=[{"type": "text", "text": f"Tôi khong muốn chạy tool này nữa với lý do: {reason}"}]
+                            ))
+                            self.agent.update_state(config=config, values={"messages": [msg]})
+                            # yield {"type": "info", "message": "Tool call đã bị reject"}
+                            
+                        current_input = Command(resume={"decisions": decisions})
+                        break  # Break khỏi astream, loop while để invoke lại
+
+                if not has_interrupt:
+                    break  # No more interrupts, done
+
+        except GraphRecursionError:
+            yield {"type": "error", "message": "Agent bị lặp vòng"}
+        except Exception as e:
+            yield {"type": "error", "message": f"Lỗi: {str(e)}"}
+
+        # Yield final answer
         if final_state:
             for msg in reversed(final_state["messages"]):
                 if isinstance(msg, AIMessage):
                     yield msg.content
                     return
+
+
+
+
+    # async def run_astream(self, context_id: str, user_id: str = None, user_input_text: str = None, user_input_url_photo: str = None, image_bytes: bytes = None):
+    #     config = {
+    #         "configurable": {"thread_id": context_id, "user_id": user_id},
+    #         "recursion_limit": self.recursion_limit,
+    #     }
+        
+    #     # Input payload lần đầu
+    #     content = []
+    #     if user_input_text:
+    #         content.append({"type": "text", "text": user_input_text})
+    #     if user_input_url_photo:
+    #         content.append({"type": "text", "text": f"Miêu tả bức ảnh: {user_input_url_photo}"})
+        
+    #     if not content:
+    #         raise ValueError("Cần ít nhất text hoặc photo input")
+        
+    #     initial_input = {"messages": [HumanMessage(content=content)]}
+        
+    #     final_state = None
+    #     current_input = initial_input
+        
+    #     try:
+    #         while True:
+    #             interrupted = False
+                
+    #             # Stream với input phù hợp
+    #             stream_mode = "updates" if isinstance(current_input, dict) else None
+                
+    #             async for chunk in self.agent.astream(
+    #                 current_input if isinstance(current_input, dict) else None,
+    #                 config=config,
+    #                 stream_mode=stream_mode
+    #             ):
+    #                 # Yield chunks cho client (streaming UI)
+    #                 yield chunk
+                    
+    #                 # Update final_state từ "values" mode hoặc last chunk
+    #                 final_state = chunk.get("state", chunk)
+                
+    #             # Kiểm tra interrupt SAU khi stream kết thúc 1 super-step
+    #             state = self.agent.get_state(config)
+    #             print(f"\n\nStatesss: {state}\n\n")
+    #             interrupts = state.interrupts
+                
+    #             if interrupts:
+    #                 print(f"\nnhảy vào interputs rồi\n")
+    #                 interrupted = True
+    #                 interrupt_event = interrupts[0]
+    #                 hitl_request = interrupt_event["value"]
+                    
+    #                 # Process human input
+    #                 decisions = Command(
+    #                     resume={
+    #                         "decisions": await process_mess_interrupt(hitl_request)
+    #                     }
+    #                 )
+    #                 current_input = decisions  # Resume input
+    #             else:
+    #                 break  # No interrupt, done
+                    
+    #     except Exception as e:
+    #         log.exception("Agent error")
+    #         yield {"type": "error", "message": "Lỗi hệ thống"}
+        
+    #     # Final answer đã yield qua stream
+
+
+
+
+    # async def run_astream_fixed(self,  context_id: str, user_id:str =None, user_input_text: str = None, user_input_url_photo: str  = None, image_bytes: bytes = None):
+    #     config = {
+    #         "configurable": {
+    #             "thread_id": context_id,
+    #             "user_id": user_id
+    #         },
+    #         "recursion_limit": self.recursion_limit,
+    #     }
+
+    #     content = []
+    #     if user_input_text:
+    #         content.append({"type": "text", "text": user_input_text})
+    #     if user_input_url_photo:
+    #         content.append({"type": "text", "text": f"Miêu tả bức ảnh: {user_input_url_photo}"})
+        
+    #     if not content:
+    #         raise ValueError("Cần ít nhất text hoặc photo input")
+
+    #     initial_input = {"messages": [HumanMessage(content=content)]}
+        
+    #     final_state = None
+    #     current_input = initial_input
+        
+    #     try:
+    #         while True:
+    #             has_interrupt = False
+                
+    #             # Stream agent execution
+    #             async for mode, payload in self.agent.astream(
+    #                 current_input,
+    #                 config=config,
+    #                 stream_mode=["values", "updates", "messages"],
+    #                 context={"user_id": user_id} if user_id else None
+    #             ):
+    #                 if mode == "values":
+    #                     final_state = payload
+                       
+                    
+    #                 # Kiểm tra interrupt SAU khi stream xong 1 super-step
+    #                 state = self.agent.get_state(config=config)
+    #                 if "__interrupt__" in payload:
+    #                     has_interrupt = True
+    #                     interrupt_event = payload["__interrupt__"][0]
+    #                     print(f"🔴 INTERRUPT: {interrupt_event.value['action_requests']}")
+                        
+    #                     # Xử lý interrupt
+    #                     decisions = await process_mess_interrupt(
+    #                         hitl_request=interrupt_event
+    #                     )
+                        
+    #                     # Decide cách resume
+    #                     # if decisions.get("decision") == "approve":
+    #                     #     current_input = Command(resume={"decisions": decisions})
+    #                     # elif decisions.get("decision") == "edit":
+    #                     #     # User chỉnh sửa → xóa state cũ, input lại
+    #                     #     new_messages = final_state["messages"][:-1]
+    #                     #     new_messages.append(HumanMessage(
+    #                     #         content=[{"type": "text", "text": decisions["new_input"]}]
+    #                     #     ))
+    #                     #     current_input = {"messages": new_messages}
+    #                     # else:  # reject
+    #                     #     # Dừng lại, không tiếp tục
+    #                     #     yield {"type": "info", "message": "Tool call đã bị reject"}
+    #                     #     return
+    #                     current_input = Command(resume={"decisions": decisions})
+    #                     break  # Break khỏi astream, loop while để invoke lại
+
+    #             if not has_interrupt:
+    #                 break  # No more interrupts, done
+
+    #     except GraphRecursionError:
+    #         yield {"type": "error", "message": "Agent bị lặp vòng"}
+    #     except Exception as e:
+    #         yield {"type": "error", "message": f"Lỗi: {str(e)}"}
+
+    #     # Yield final answer
+    #     if final_state:
+    #         for msg in reversed(final_state["messages"]):
+    #             if isinstance(msg, AIMessage):
+    #                 yield msg.content
+    #                 return

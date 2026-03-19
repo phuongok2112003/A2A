@@ -32,7 +32,7 @@ class ChatService:
         image_bytes :bytes | None = None
     ) -> None:
 
-        async for res in self.agent.run_astream(
+        async for res in self.agent.run_astream_fixed(
             user_input_text=user_input_text,
             context_id=context_id,
             user_id=user_id,
