@@ -56,3 +56,9 @@ psycopg[binary]
 roniter
 celery[redis]
 redis
+
+langchain-mcp-adapters
+smolagents
+selenium
+helium 
+pillow

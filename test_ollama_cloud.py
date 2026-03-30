@@ -19,6 +19,7 @@
 
 import asyncio
 from langchain_ollama import ChatOllama
+from langchain_openai import ChatOpenAI
 from config.settings import settings
 from langchain_core.messages import HumanMessage
 
@@ -29,13 +30,13 @@ with open("images/remmina_10.0.1.205_10.0.1.205_20250929-022529.png", "rb") as f
 
 msg = HumanMessage(
     content=[
-        {"type": "text", "text": "Ảnh này có gì?"},
-        {
-            "type": "image_url",
-            "image_url": {
-                "url": f"data:image/png;base64,{b64}"
-            },
-        },
+        {"type": "text", "text": "Tai sao troi xanh?"},
+        # {
+        #     "type": "image_url",
+        #     "image_url": {
+        #         "url": f"data:image/png;base64,{b64}"
+        #     },
+        # },
     ]
 )
 
@@ -52,6 +53,11 @@ async def main():
         temperature=0,
        
     )
+    llm_openai = ChatOpenAI(
+        model_name="gpt-4o",
+        temperature=0.2,
+        openai_api_key=settings.OPENAI_A2A_API_KEY,
+    )
     
     llm_ollama_kimi = ChatOllama(
     model="kimi-k2.5:cloud",
@@ -67,7 +73,7 @@ async def main():
 )
         
 
-    async for chunk in llm_ollama_kimi.astream([msg]):
+    async for chunk in llm_openai.astream([msg]):
         if chunk.content:
             print(chunk.content, end="", flush=True)
 

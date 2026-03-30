@@ -4,13 +4,13 @@ from zoneinfo import ZoneInfo
 from uuid import uuid4
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from schemas.base import ScheduleRequest, ConfigConversation, TypeConfigConversation, ScheduleType
-from services.chat_service import ChatService
 from config.logger import log
 # Đặt timezone Việt Nam để 8h sáng chạy đúng giờ
 tz = ZoneInfo("Asia/Ho_Chi_Minh")
 scheduler = AsyncIOScheduler(timezone=tz)
 
 async def process_task(schedule_request: ScheduleRequest):
+    from services.chat_service import ChatService
     try:
         log.info("Running process_task")
         chat_service = ChatService()
@@ -33,7 +33,7 @@ async def process_task(schedule_request: ScheduleRequest):
 
 async def setup_scheduler(schedule_request: ScheduleRequest):
     tz = ZoneInfo(schedule_request.timezone)
-
+    log.info(f"setup scheduler for {schedule_request.task_prompt}")
     # unique job id (tránh trùng)
     job_id = f"{schedule_request.external_user_id}_{uuid4().hex}"
 

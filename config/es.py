@@ -7,6 +7,7 @@ def init_elasticsearch_sync(index_elastic)->Elasticsearch:
       if not es.indices.exists(index=index_elastic):
           es.indices.create(
               index=index_elastic,
+              timeout=20000,
               body={
                   "mappings": {
                       "properties": {
