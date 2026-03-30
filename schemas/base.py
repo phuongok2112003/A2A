@@ -1,9 +1,12 @@
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, model_validator, field_validator
 from typing import Optional, Dict, Any, List, Literal
 from a2a.types import AgentSkill
 from a2a.types import Message
 from fastapi import APIRouter, UploadFile, File, Form
+from croniter import croniter
 from langchain.agents.middleware.types import AgentState
+from enum import Enum
+from datetime import datetime
 class Context(BaseModel):
     user_id: str
 
@@ -77,4 +80,39 @@ class Quesion(BaseModel):
             raise ValueError(
                 'Phải cung cấp user_input_text hoặc user_input_photo (hoặc cả hai)'
             )
+        return self
+
+class ScheduleType(str, Enum):
+    CRON = "cron"
+    ONE_TIME = "one_time"
+
+class TypeConfigConversation(str, Enum):
+    ZALO_BOT = "zalo_bot"
+    BOT = "bot"
+
+class ConfigConversation(BaseModel):
+    user_id : str = Field(description="Name của boot. Ví dụ như: zalobot, telegrambot,...")
+    context_id :str = Field(description="ID chat của người dùng với bot")
+    type_config_conversation : TypeConfigConversation
+
+    
+class ScheduleRequest(BaseModel):
+    external_user_id: str
+    type_config_conversation:str
+    task_prompt: str = Field(description= "Nhiệm vụ mà agent thực hiện")
+    schedule_type: ScheduleType = Field(description= "Schedule thực hiện một lần hãy thực hiện hằng ngày")
+
+    cron_expression: str | None = Field(description="Biểu thức cron")
+    run_at: datetime | None = Field(description="Set ngày khi cron_expression là one_time")
+
+    timezone: str = "Asia/Ho_Chi_Minh"
+    
+    @model_validator(mode="after")
+    def validate_schedule(self):
+        if self.schedule_type == ScheduleType.CRON:
+            if not self.cron_expression:
+                raise ValueError("cron_expression required")
+        elif self.schedule_type == ScheduleType.ONE_TIME:
+            if not self.run_at:
+                raise ValueError("run_at required")
         return self

@@ -57,6 +57,7 @@ from common.create_sub_agent import list_sub_agents
 from common.export_models_llm import ModelsLLM
 from config.es import init_elasticsearch_sync
 from schemas.base import CustomAgentState
+from schemas.base import ConfigConversation
 # ===============================
 # System Prompt
 # ===============================
@@ -74,6 +75,7 @@ Mục tiêu chính:
 - Trả lời chính xác câu hỏi của người dùng.
 - Sử dụng long-term memory để cá nhân hóa câu trả lời khi phù hợp.
 - Điều phối các agent khác khi cần thiết. Hãy nhớ luôn gọi tool get_state để lấy được state hiện tại.
+- **LUÔN tự động tìm kiếm thông tin công nghệ mới nhất trong ngày** khi có yêu cầu liên quan đến công nghệ, AI, lập trình, phần mềm, v.v.
 
 ============================
 LONG-TERM MEMORY STRATEGY
@@ -143,6 +145,83 @@ Sử dụng call_external_agent khi:
 - Cần chuyên môn sâu.
 - Cần phân tích độc lập.
 - Cần xác minh kết quả kỹ thuật.
+
+============================
+TECHNOLOGY NEWS FINDER (TỰ ĐỘNG)
+============================
+
+Bạn CÓ MỘT SỐ TOOL TỰ ĐỘNG để tìm kiếm thông tin công nghệ:
+
+## Tools tìm kiếm công nghệ:
+
+1. **search_internet(query, search_depth)** - Tìm kiếm thông tin mới nhất trên internet
+   - Dùng khi cần thông tin chi tiết, cập nhật mới nhất
+   - search_depth="advanced" cho kết quả chi tiết hơn
+
+2. **get_today_tech_news(topic, days)** - Lấy tin tức công nghệ hôm nay
+   - topic: "technology", "ai", "programming", "software", "hardware", v.v.
+   - days: số ngày gần đây (1 = hôm nay, 2-3 = vài ngày gần đây)
+
+3. **get_latest_ai_news()** - Lấy tin tức AI mới nhất từ hôm nay
+   - Tự động lọc các tin tức AI mới nhất
+
+4. **get_latest_programming_news()** - Lấy tin tức lập trình mới nhất từ hôm nay
+
+5. **get_news(topic, limit)** - Lấy danh sách tin tức về một chủ đề
+
+## Khi nào nên dùng tool tự động:
+
+LUÔN dùng tool tìm kiếm công nghệ khi:
+- User hỏi về AI, LLM, chatbot, machine learning
+- User hỏi về lập trình, framework, library mới
+- User hỏi về công nghệ, phần mềm, ứng dụng mới
+- User hỏi về cập nhật công nghệ trong ngày
+- Bạn cần thông tin mới nhất để trả lời chính xác
+
+VÍ DỤ:
+- User: "AI mới nhất là gì?" → Dùng get_today_tech_news("ai", 1)
+- User: "React 19 có gì mới?" → Dùng search_internet("React 19 new features", "advanced")
+- User: "Lập trình Python hôm nay có tin gì?" → Dùng get_latest_programming_news()
+============================
+TOOL DISCOVERY AND USAGE
+============================
+
+Bạn có khả năng tự động phát hiện và sử dụng tất cả các tool có sẵn trong hệ thống để hoàn thành nhiệm vụ một cách hiệu quả.
+
+## Cách phát hiện tool:
+
+1. **Quét file common/tool_common.py** - Đây là nơi chứa các tool cốt lõi như:
+   - run_shell: Thực thi lệnh shell
+   - internet_search: Tìm kiếm trên web qua Tavily
+   - load_image: Tải và xử lý hình ảnh
+   - get_state: Lấy state hiện tại của graph
+   - scheduled_job: Tạo nhiệm vụ lên lịch
+
+2. **Quét các file trong dự án** để tìm các tool khác được định nghĩa với decorator @tool
+
+3. **Sử dụng tool get_state()** để xem các tool hiện có sẵn trong context
+
+## Nguyên tắc sử dụng tool:
+
+- **LUÔN kiểm tra xem có tool nào phù hợp với yêu cầu trước khi thực hiện hành động thủ công**
+- Khi cần thực thi lệnh shell → ưu tiên dùng run_shell
+- Khi cần tìm kiếm thông tin trên internet → ưu tiên dùng internet_search
+- Khi cần xử lý hình ảnh → ưu tiên dùng load_image
+- Khi cần lưu/truy xuất ký ức dài hạn → dùng các tool memory (nếu có sẵn)
+- Khi cần lên lịch nhiệm vụ → dùng scheduled_job
+
+## Ví dụ sử dụng:
+
+- User: "Clone repository github.com/user/repo" → Dùng run_shell với command "git clone https://github.com/user/repo"
+- User: "Tìm kiếm thông tin về React 19" → Dùng internet_search với query "React 19 new features"
+- User: "Mô tả hình ảnh này: [URL]" → Dùng load_image với source là URL đó
+- User: "Lưu ý thích của tôi là đọc sách" → Dùng công cụ lưu memory (nếu có sẵn trong registry)
+
+## Lưu ý quan trọng:
+
+- Trước khi dùng tool mới, hãy đọc kỹ mô tả và tham số của nó
+- Luôn xác nhận với user trước khi thực hiện hành động có thể gây thay đổi hệ thống (ví dụ: run_shell với lệnh sửa file)
+- Kết hợp nhiều tool với nhau để giải quyết vấn đề phức phénomènes
 
 ============================
 RESPONSE STYLE
@@ -471,7 +550,7 @@ class AgentCustom:
 
 
         models={
-            "primary_model":ModelsLLM.llm_ollama_gpt,
+            "primary_model":ModelsLLM.llm_ollama_nemotron,
             "summary_model": ModelsLLM.llm_ollama_gpt
         }
 
@@ -810,11 +889,12 @@ Hãy thực thi tool này với các tham số đã sửa."""
                     yield msg.content
                     return
 
-    async def run_astream_fixed(self,  context_id: str, user_id:str =None, user_input_text: str = None, user_input_url_photo: str  = None, image_bytes: bytes = None):
+    async def run_astream_fixed(self, config_conversation : ConfigConversation, user_input_text: str = None, user_input_url_photo: str  = None):
         config = {
             "configurable": {
-                "thread_id": context_id,
-                "user_id": user_id
+                "thread_id": config_conversation.context_id,
+                "user_id": config_conversation.user_id,
+                "type_config": config_conversation.type_config_conversation
             },
             "recursion_limit": self.recursion_limit,
         }
@@ -842,7 +922,7 @@ Hãy thực thi tool này với các tham số đã sửa."""
                     current_input,
                     config=config,
                     stream_mode=["values", "updates", "messages"],
-                    context={"user_id": user_id} if user_id else None
+                    context={"user_id": config_conversation.user_id} if config_conversation.user_id else None
                 ):
                     if mode == "values":
                         final_state = payload

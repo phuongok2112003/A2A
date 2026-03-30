@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     SECRET_TOKEN_WEBHOOK_ZALO:str = os.getenv("SECRET_TOKEN_WEBHOOK_ZALO","")
     NGROK_API:str = os.getenv("NGROK_API","http://127.0.0.1:4040/api/tunnels")
     OLLAMA_KEY:str = os.getenv("OLLAMA_KEY","")
+    POSTGRES_DATABASE_URL : str = os.getenv("POSTGRES_DATABASE_URL","")
     APP_NAME: str = "A2A_Application"
     BASE_DIR:str = str(Path(__file__).resolve().parent)
 

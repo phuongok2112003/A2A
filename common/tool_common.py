@@ -1,6 +1,6 @@
 import subprocess
 from langchain.tools import tool, ToolRuntime
-from schemas.base import RunShellArgs, SaveMemoryArgs, LongMemory
+from schemas.base import RunShellArgs, SaveMemoryArgs, LongMemory, ScheduleRequest
 from langgraph.store.base import PutOp, SearchOp
 import uuid
 from memory.memory_store import PineconeMemoryStore
@@ -17,6 +17,8 @@ from langchain_core.messages import HumanMessage
 from common.export_models_llm import ModelsLLM
 import os, json
 from langchain_core.tools import InjectedToolArg
+from services.scheduler_service import SchedulerService
+from schemas.base import TypeConfigConversation
 @tool(args_schema=RunShellArgs)
 def run_shell(command: str, timeout: int = 30) -> dict:
     """
@@ -286,7 +288,53 @@ def get_state(
     return list(state.keys())
 
 
-tools = [ run_shell,get_state]  ### Attach list tool for agent
+@tool()
+async def scheduled_job(
+    runtime: Annotated[ToolRuntime, InjectedToolArg],
+    task_prompt: str,
+    schedule_type: str,
+    cron_expression: str | None = None,
+    run_at: str | None = None,
+    timezone: str = "Asia/Ho_Chi_Minh",
+) -> str:
+    """
+    Lên lịch một nhiệm vụ để agent thực hiện tự động.
+
+    Tham số:
+    - task_prompt: Mô tả nhiệm vụ mà agent cần thực hiện.
+    - schedule_type: Loại lịch ("cron" cho lặp lại, "one_time" cho một lần).
+    - cron_expression: Biểu thức cron xác định lịch chạy (chỉ dùng khi schedule_type="cron").
+    - run_at: Thời điểm chạy một lần (chỉ dùng khi schedule_type="one_time", định dạng ISO).
+    - timezone: Múi giờ để giải thích biểu thức cron (mặc định: "Asia/Ho_Chi_Minh").
+
+    Trả về:
+    - Thông báo xác nhận đã tạo lịch thành công.
+    """
+    scheduler_service = SchedulerService()
+
+    schedule_request = ScheduleRequest(
+        external_user_id=runtime.context.user_id,
+        task_prompt=task_prompt,
+        schedule_type=schedule_type,
+        cron_expression=cron_expression,
+        timezone=timezone,
+        type_config_conversation = runtime.config.get("configurable").get("type_config", TypeConfigConversation.BOT)
+    )
+    # gọi service layer
+    result = await scheduler_service.create_schedule(
+       schedule_request = schedule_request
+    )
+
+    if schedule_type == "cron":
+        return f"Đã tạo lịch chạy: {task_prompt} theo cron expression {cron_expression}"
+    else:  # one_time
+        return f"Đã tạo lịch chạy một lần: {task_prompt} lúc {run_at}"
+    
+def send_mess_to_zalo_bot(message: str):
+
+    pass
+
+tools = [ run_shell,get_state, scheduled_job]  ### Attach list tool for agent
 interrupt_on_tool = [
     run_shell
 ]  ### Attach list tool for agent to interruput when call tool

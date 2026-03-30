@@ -13,35 +13,62 @@ from until.webhook_zalo_bot import init_ngrok
 from services.chat_service import ChatService
 import asyncio
 from until.enum import EventName
-from schemas.base import Quesion
+from schemas.base import ConfigConversation, TypeConfigConversation
 from fastapi import APIRouter, UploadFile, File, Form
 from typing import Optional
 from middleware.middelware_app import LimitUploadSizeMiddleware
 from fastapi import Request, HTTPException
+from config.db_postgres import engine
+from model.model_base import Base
+from config.logger import log
+from services.scheduler_service import SchedulerService
+from config.scheduler import scheduler
+
 bot_zalo = zalo_bot.Bot(settings.BOOT_ZALO_TOKEN)
 
 # bot_zalo.set_webhook(secret_token=settings.SECRET_TOKEN_WEBHOOK_ZALO, url= f"{ngrok_tunel_zalo_bot_webhook.public_url}/zalo/webhook")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    app.state.agent1_app = await server_agent_1.build()
-    app.state.agent2_app = await server_agent_2.build()
-
-    app.mount(settings.AGENT_1_PATH, app.state.agent1_app)
-    app.mount(settings.AGENT_2_PATH, app.state.agent2_app)
-
     try:
+        log.info("Starting application...")
+        scheduler.start()
+        # Build agents
+        app.state.agent1_app = await server_agent_1.build()
+        app.state.agent2_app = await server_agent_2.build()
+
+        app.mount(settings.AGENT_1_PATH, app.state.agent1_app)
+        app.mount(settings.AGENT_2_PATH, app.state.agent2_app)
+
+        # Init DB schema (dev only)
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+
+        # Init shared ChatService
+        app.state.chat_service = ChatService()
+        await app.state.chat_service.init()
+
+        # Register webhook
         public_url = await init_ngrok(10000)
+
         await bot_zalo._set_webhook_async(
             url=f"{public_url}/zalo/webhook",
             secret_token=settings.SECRET_TOKEN_WEBHOOK_ZALO,
         )
-        print("Webhook registered")
+        await SchedulerService.load_schedules()
+
+        log.info("Application startup completed")
 
         yield
 
+    except Exception as e:
+        log.exception("Startup failed")
+        raise
+
     finally:
-        print("Shutdown...")
+        log.info("Shutting down...")
+        scheduler.shutdown()
+        await engine.dispose()
 
 
 app = FastAPI(title="Currency Agent Platform", lifespan=lifespan)
@@ -53,11 +80,17 @@ app.add_middleware(LimitUploadSizeMiddleware)
 def health():
     return {"status": "ok"}
 
+@app.post('/send-zalo')
+async def send_mess_zalo():
+    await bot_zalo.send_sticker(chat_id="c828c6bcb5e85cb605f9",sticker="4591eff8d2bd3be362ac")
+    await bot_zalo.send_message(chat_id="c828c6bcb5e85cb605f9",text="Toi không hỗ trợ loại tin nhắn này")
+    
+    return {"status": "ok"}
+
 
 @app.post("/zalo/webhook")
 async def zalo_webhook(req: Request):
-    chat_service = ChatService()
-    await chat_service.init()
+    chat_service: ChatService = req.app.state.chat_service
     payload = await req.json()
     signature = req.headers.get("X-Zalo-Signature")
 
@@ -70,6 +103,8 @@ async def zalo_webhook(req: Request):
 
     message_id = payload["message"]["message_id"]
 
+    display_name = payload["message"]["from"]["display_name"]
+
     event_name = payload.get("event_name")
     if event_name == EventName.Unsupported.value:
         await bot_zalo.send_message(chat_id=chat_id,text="Toi không hỗ trợ loại tin nhắn này",reply_to_message_id=message_id)
@@ -78,9 +113,10 @@ async def zalo_webhook(req: Request):
         await bot_zalo.send_sticker(chat_id=chat_id,sticker="4591eff8d2bd3be362ac",reply_to_message_id=message_id)
         return {"status": "ok"}
     else:
-        res = await chat_service.process_chat(user_id=chat_id, context_id="zalo_bot",
+        config = ConfigConversation(user_id=chat_id, context_id=f'{display_name}_{chat_id}',type_config_conversation=TypeConfigConversation.ZALO_BOT)
+        res = await chat_service.process_chat(config = config,
                                               user_input_text= payload["message"]["text"] if event_name==EventName.Text.value else None,
-                                              user_input_photo = payload["message"]["photo_url"] if event_name==EventName.Image.value else None)
+                                              user_input_url_photo = payload["message"]["photo_url"] if event_name==EventName.Image.value else None)
 
         print(message_id)
 

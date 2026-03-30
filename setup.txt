@@ -50,3 +50,9 @@ langchain-pinecone>=0.2.0
 python-zalo-bot
 langchain_ollama
 opencv-python
+sqlalchemy
+asyncpg
+psycopg[binary]
+roniter
+celery[redis]
+redis

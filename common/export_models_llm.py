@@ -29,6 +29,19 @@ class ModelsLLM():
         temperature=0,
 
     )
+    
+    llm_ollama_nemotron = ChatOllama(
+        model="nemotron-3-super:cloud",
+        base_url="https://ollama.com",
+        client_kwargs={
+            "headers": {
+                "Authorization": f"Bearer {settings.OLLAMA_KEY}"
+            },
+            "timeout": 120,
+        },
+        temperature=0,
+
+    )
     llm_ollama_kimi = ChatOllama(
         model="kimi-k2.5:cloud",
         base_url="https://ollama.com",
