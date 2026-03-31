@@ -8,9 +8,10 @@ async def main():
         {
 
         "playwright": {
-            "url": "http://localhost:8931/mcp",
-            "transport": "sse"
-            }
+      "command": "npx",
+      "args": ["-y", "@executeautomation/playwright-mcp-server"],
+      "transport":"stdio"
+    }
         }
     )
 
