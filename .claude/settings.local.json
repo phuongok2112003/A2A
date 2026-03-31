@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(agent-browser open:*)",
+      "Bash(agent-browser wait:*)",
+      "Bash(agent-browser get:*)"
+    ]
+  }
+}

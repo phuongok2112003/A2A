@@ -151,30 +151,94 @@
 # print(agent_output)
 
 
+import asyncio
+from typing import Optional
 
-from langchain_openai import ChatOpenAI
-from langchain.agents import create_react_agent, AgentExecutor
-from langchain_community.agent_toolkits import PlaywrightBrowserToolkit
-from langchain_community.agent_toolkits.playwright import PlaywrightBrowserToolkit
+from langchain.agents import create_agent
+from common.export_models_llm import ModelsLLM
+from pprint import pprint
 
-# Khởi tạo browser
-browser = create_sync_playwright_browser()
+from playwright.async_api import async_playwright, Browser, Playwright
+from langchain_community.agent_toolkits.playwright.toolkit import PlayWrightBrowserToolkit
 
-# Tạo toolkit với các tools: navigate, click, extract text, etc.
-toolkit = PlaywrightBrowserToolkit.from_browser(browser=browser)
-tools = toolkit.get_tools()
 
-# LLM với tool binding
-llm = ChatOpenAI(model="gpt-4o", temperature=0).bind_tools(tools)
+class BrowserManager:
+    """Manage Playwright lifecycle safely."""
 
-# Tạo agent (ReAct pattern: Reason + Act)
-agent = create_react_agent(llm, tools, prompt="Bạn là browser agent. Sử dụng tools để navigate và interact với web theo yêu cầu.")
+    def __init__(self):
+        self.playwright: Optional[Playwright] = None
+        self.browser: Optional[Browser] = None
 
-# Executor để chạy agent
-agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
+    async def start(self) -> Browser:
+        self.playwright = await async_playwright().start()
 
-# Chạy agent
-result = agent_executor.invoke({
-    "input": "Đi đến https://news.ycombinator.com, lấy top 3 headlines."
-})
-print(result["output"])
+        self.browser = await self.playwright.chromium.launch(
+            headless=True,
+            args=[
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+            ],
+        )
+        return self.browser
+
+    async def stop(self):
+        """Safe cleanup"""
+        try:
+            if self.browser:
+                await self.browser.close()
+        finally:
+            if self.playwright:
+                await self.playwright.stop()
+
+
+async def run_agent(browser: Browser):
+    toolkit = PlayWrightBrowserToolkit.from_browser(
+        async_browser=browser
+    )
+    tools = toolkit.get_tools()
+
+    agent = create_agent(
+        ModelsLLM.llm_ollama_nemotron,
+        tools=tools,
+        system_prompt="""You are a browser automation agent.
+Always use tools to access web content.
+Never answer from memory when URL is provided.
+Wait for page load before extracting content.
+When navigating:
+- ALWAYS use waitUntil=domcontentloaded
+- ALWAYS set timeout=60000
+- NEVER wait for full page load
+"""
+    )
+
+    try:
+        async for res in agent.astream(
+            {
+                "messages": [{
+                    "role": "user",
+                    "content": "Tìm tôi các thông tin về model Mamba trên trang của IBM: https://www.ibm.com/think/topics/mamba-model "
+                }]
+            },
+            stream_mode=["values", "updates", "messages"],
+        ):
+            pprint(res)
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise
+
+
+async def main():
+    manager = BrowserManager()
+
+    try:
+        browser = await manager.start()
+        await run_agent(browser)
+
+    finally:
+        await manager.stop()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
