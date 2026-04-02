@@ -336,5 +336,5 @@ def send_mess_to_zalo_bot(message: str):
 
 tools = [ run_shell,get_state, scheduled_job]  ### Attach list tool for agent
 interrupt_on_tool = [
-    run_shell
+    # run_shell
 ]  ### Attach list tool for agent to interruput when call tool

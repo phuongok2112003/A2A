@@ -153,14 +153,73 @@
 
 import asyncio
 from typing import Optional
+import sys
+import io
+from pprint import pprint
+from pathlib import Path
+
+# Thêm project root vào sys.path để import absolute hoạt động
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+from common.export_models_llm import ModelsLLM
 
 from langchain.agents import create_agent
-from common.export_models_llm import ModelsLLM
-from pprint import pprint
-
 from playwright.async_api import async_playwright, Browser, Playwright
 from langchain_community.agent_toolkits.playwright.toolkit import PlayWrightBrowserToolkit
+from langchain_community.tools.playwright.base import BaseBrowserTool
+from langchain_community.tools.playwright.utils import aget_current_page
+from langchain_core.callbacks import AsyncCallbackManagerForToolRun
+from pydantic import BaseModel, Field, model_validator
+from urllib.parse import urlparse
 
+
+# ──────────────────────────────────────────────────────────────
+# Custom NavigateTool: timeout cao hơn + wait_until domcontentloaded
+# + bọc try/except để không crash khi trang chậm
+# ──────────────────────────────────────────────────────────────
+class NavigateToolInput(BaseModel):
+    """Input for NavigateTool."""
+    url: str = Field(..., description="url to navigate to")
+
+    @model_validator(mode="before")
+    @classmethod
+    def validate_url_scheme(cls, values: dict) -> dict:
+        url = values.get("url")
+        parsed_url = urlparse(url)
+        if parsed_url.scheme not in ("http", "https"):
+            raise ValueError("URL scheme must be 'http' or 'https'")
+        return values
+
+
+class SafeNavigateTool(BaseBrowserTool):
+    """Navigate browser with longer timeout and domcontentloaded wait."""
+
+    name: str = "navigate_browser"
+    description: str = "Navigate a browser to the specified URL"
+    args_schema: type[BaseModel] = NavigateToolInput
+
+    async def _arun(
+        self,
+        url: str,
+        run_manager: Optional[AsyncCallbackManagerForToolRun] = None,
+    ) -> str:
+        if self.async_browser is None:
+            raise ValueError(f"Asynchronous browser not provided to {self.name}")
+        page = await aget_current_page(self.async_browser)
+        try:
+            response = await page.goto(
+                url,
+                timeout=60000,                   # 60s thay vì 30s
+                wait_until="domcontentloaded",   # Không đợi full load
+            )
+            status = response.status if response else "unknown"
+            return f"Navigating to {url} returned status code {status}"
+        except Exception as e:
+            # Không crash — trả lỗi về cho LLM tự xử lý (skip URL)
+            return f"Error navigating to {url}: {str(e)[:200]}. Try a different URL."
+
+    def _run(self, url: str, run_manager=None) -> str:
+        raise NotImplementedError("Use async version")
 
 class BrowserManager:
     """Manage Playwright lifecycle safely."""
@@ -197,36 +256,58 @@ async def run_agent(browser: Browser):
     )
     tools = toolkit.get_tools()
 
+    # Thay thế NavigateTool mặc định bằng SafeNavigateTool (timeout 60s)
+    tools = [t for t in tools if t.name != "navigate_browser"]
+    safe_nav = SafeNavigateTool.from_browser(async_browser=browser)
+    tools.insert(0, safe_nav)
+
     agent = create_agent(
         ModelsLLM.llm_ollama_nemotron,
         tools=tools,
         system_prompt="""You are a browser automation agent.
 Always use tools to access web content.
 Never answer from memory when URL is provided.
-Wait for page load before extracting content.
-When navigating:
-- ALWAYS use waitUntil=domcontentloaded
-- ALWAYS set timeout=60000
-- NEVER wait for full page load
+
+## Navigation rules:
+- Use navigate_browser tool to go to URLs. It already handles timeouts.
+- If navigation fails or returns an error, SKIP that URL and try another one.
+- Do NOT pass timeout or waitUntil parameters — they are handled automatically.
+
+## Strategy:
+- Search on Google first: navigate to https://www.google.com/search?q=<query>
+- Extract text from the search results page using extract_text tool.
+- If Google results are enough to answer, respond immediately.
+- Only visit 1-2 result URLs if needed for more detail.
+- If a site fails to load, skip it and use what you already have.
 """
     )
+    user_message = """
+Tìm cho tôi các thông tin mới nhất về AI ngày hôm nay?
+"""
+
+    print("=" * 70 + "\n")
 
     try:
-        async for res in agent.astream(
-            {
-                "messages": [{
-                    "role": "user",
-                    "content": "Tìm tôi các thông tin về model Mamba trên trang của IBM: https://www.ibm.com/think/topics/mamba-model "
-                }]
-            },
+        async for event, data in agent.astream(
+            {"messages": [{"role": "user", "content": user_message}]},
             stream_mode=["values", "updates", "messages"],
+            config={"configurable": {"thread_id": "browser-research-001"}}
         ):
-            pprint(res)
-
+            # In ra messages mới nhất
+            if isinstance(data, dict) and "messages" in data:
+                data["messages"][-1].pretty_print()
+            elif hasattr(data, 'content'):
+                # BaseMessage trực tiếp
+                data.pretty_print()
     except Exception as e:
+        print(f"\n❌ Lỗi: {e}")
         import traceback
         traceback.print_exc()
-        raise
+
+    
+    print("\n" + "=" * 70)
+    print("✅ Hoàn thành!")
+    print("=" * 70)
 
 
 async def main():

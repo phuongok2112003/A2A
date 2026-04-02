@@ -3,7 +3,8 @@
     "allow": [
       "Bash(agent-browser open:*)",
       "Bash(agent-browser wait:*)",
-      "Bash(agent-browser get:*)"
+      "Bash(agent-browser get:*)",
+      "Bash(python3:*)"
     ]
   }
 }
