@@ -11,6 +11,10 @@ async def main():
       "command": "npx",
       "args": ["-y", "@executeautomation/playwright-mcp-server"],
       "transport":"stdio"
+    },
+     "gradio": {
+      "url": "https://victor-websearch.hf.space/gradio_api/mcp/sse",
+      "transport":"http"
     }
         }
     )

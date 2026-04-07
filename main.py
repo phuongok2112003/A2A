@@ -14,7 +14,7 @@ from services.chat_service import ChatService
 import asyncio
 from until.enum import EventName
 from schemas.base import ConfigConversation, TypeConfigConversation
-from fastapi import APIRouter, UploadFile, File, Form
+from fastapi import UploadFile, File, Form
 from typing import Optional
 from middleware.middelware_app import LimitUploadSizeMiddleware
 from fastapi import Request, HTTPException

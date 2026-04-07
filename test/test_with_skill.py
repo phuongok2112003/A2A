@@ -89,7 +89,7 @@ Trả lời bằng tiếng Việt, ngắn gọn và súc tích.
     print(f"🤖 Model: nemotron-3-super:cloud\n")
 
     # ---------- Tin nhắn từ người dùng ----------
-    user_message = "Tin tức mới nhất về  AI ngày hôm nay?"
+    user_message = "Giá dầu thế giới hôm nay như thế nào? Hãy tra cứu thông tin trên internet và tóm tắt lại cho tôi."
 
     # ---------- Stream và in kết quả ----------
     print("=" * 70)
