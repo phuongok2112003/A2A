@@ -36,9 +36,9 @@ class HitlDialog:
         """
 
         if not hasattr(interrupt, "value"):
-            raise ValueError("Invalid Interrupt object")
-
-        value = interrupt.value
+            value = interrupt
+        else:
+            value = interrupt.value
 
         action_requests = value.get("action_requests", [])
         review_configs = value.get("review_configs", [])

@@ -79,7 +79,7 @@ Answer style:
 """
     # ---------- Tạo Agent với checkpointer đầy đủ ----------
     agent = create_deep_agent(
-        ModelsLLM.llm_ollama_nemotron,
+        ModelsLLM.llm_openai,
         tools,
         checkpointer=MemorySaver(),
         system_prompt=system_prompt,
@@ -95,11 +95,11 @@ Answer style:
     # ---------- Thông báo trạng thái ----------
     print("✅ Agent MCP đã được tạo thành công.")
     print(f"🔧 Số lượng tools từ MCP server: {len(tools)}")
-    print(f"🤖 Model LLM: {ModelsLLM.llm_ollama_nemotron}")
+    print(f"🤖 Model LLM: {ModelsLLM.llm_openai}")
     print(f"💾 Kết quả sẽ được xử lý bởi agent\n")
 
     # ---------- Tin nhắn từ người dùng (đã sửa để tránh lỗi encoding) ----------
-    user_message = "Giá dầu thế giới hôm nay như thế nào? Hãy tra cứu thông tin trên internet và tóm tắt lại cho tôi."
+    user_message = "Tôi muốn bạn tìm cho tôi những cuộc thi hackathon về AI sắp diễn ra trong năm 2026, hôm nay là ngày 20/5/2026, loại bỏ những cuộc thi đã diễn ra và đang diễn ra. Thống kê cho tôi những cuộc thi ở miền Bắc Việt Nam thôi"
 
     # ---------- Stream và in kết quả ----------
     print("=" * 70)

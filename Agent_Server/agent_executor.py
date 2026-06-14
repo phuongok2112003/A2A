@@ -12,7 +12,7 @@ from schemas.base import ServerAgentRequest
 from until.convert import dict_to_string
 from a2a.server.agent_execution.context import RequestContext
 from a2a.server.events.event_queue import EventQueue
-
+from common.process_interrupt import process_interrupt
 class BaseAgentExecutor(AgentExecutor, ABC):
     def __init__(
         self,
@@ -48,7 +48,8 @@ class BaseAgentExecutor(AgentExecutor, ABC):
         client: TaskUpdater | None = None,
     ):
         config = {
-            "configurable": {"thread_id": server_agent.context_id},
+            "configurable": {"thread_id": server_agent.context_id.split("____")[0],
+                             "user_id": server_agent.context_id.split("____")[1] if "____" in server_agent.context_id else "unknown_user"},
             "recursion_limit": self.agent.recursion_limit,
         }
         input_user:str = None
@@ -80,7 +81,7 @@ class BaseAgentExecutor(AgentExecutor, ABC):
 
         elif data_command:
             print(f"User inpuidata_command  ở A2A {data_command}")
-            graph_input = Command(resume=data_command)
+            graph_input = process_interrupt(data_command, self.agent.agent, config)
 
         async for mode, payload in self.agent.agent.astream(
             graph_input,

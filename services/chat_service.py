@@ -32,11 +32,12 @@ class ChatService:
         user_input_text: str,
         config : ConfigConversation,
         user_input_url_photo:str | None= None
-    ) -> None:
-
+    ) :
+        final_result = None
         async for res in self.agent.run_astream_fixed(
             user_input_text=user_input_text,
             config_conversation = config,
             user_input_url_photo= user_input_url_photo if user_input_url_photo else None
         ):
-            return res
+            final_result = res
+        return final_result

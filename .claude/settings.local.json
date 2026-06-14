@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run:*)",
+      "Bash(taskkill:*)",
+      "Bash(netstat -ano)",
+      "Bash(findstr :3000)",
+      "Bash(kill:*)",
+      "Bash(/taskkill:*)",
+      "Bash(pkill:*)",
+      "Bash(cmd.exe:*)",
+      "Bash(exit:*)"
+    ]
+  }
+}

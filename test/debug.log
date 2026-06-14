@@ -1,0 +1,7 @@
+[0520/172548.246:ERROR:gpu\command_buffer\service\gles2_cmd_decoder_passthrough.cc:1091] [GroupMarkerNotSet(crbug.com/242999)!:A8C0180054420000]Automatic fallback to software WebGL has been deprecated. Please use the --enable-unsafe-swiftshader (about:flags#enable-unsafe-swiftshader) flag to opt in to lower security guarantees for trusted content.
+[0520/172548.669:WARNING:net\spdy\spdy_session.cc:3071] Received HEADERS for invalid stream 233
+[0520/172548.673:WARNING:net\spdy\spdy_session.cc:3071] Received HEADERS for invalid stream 165
+[0520/172548.673:WARNING:net\spdy\spdy_session.cc:3071] Received HEADERS for invalid stream 167
+[0520/172548.674:WARNING:net\spdy\spdy_session.cc:3071] Received HEADERS for invalid stream 169
+[0520/172548.676:WARNING:net\spdy\spdy_session.cc:3071] Received HEADERS for invalid stream 171
+[0520/172549.100:ERROR:gpu\command_buffer\service\gles2_cmd_decoder_passthrough.cc:1091] [GroupMarkerNotSet(crbug.com/242999)!:A8C0180054420000]Automatic fallback to software WebGL has been deprecated. Please use the --enable-unsafe-swiftshader (about:flags#enable-unsafe-swiftshader) flag to opt in to lower security guarantees for trusted content.

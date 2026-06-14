@@ -19,7 +19,7 @@ from deepagents.backends.utils import (
     _glob_search_files,
     create_file_data,
     file_data_to_string,
-    format_read_response,
+    slice_read_response,
     grep_matches_from_files,
     perform_string_replacement,
     update_file_data,
@@ -292,7 +292,7 @@ class CustomsStoreBackend(BackendProtocol):
         except ValueError as e:
             return f"Error: {e}"
 
-        return format_read_response(file_data, offset, limit)
+        return slice_read_response(file_data, offset, limit)
 
     async def aread(
         self,
@@ -317,7 +317,7 @@ class CustomsStoreBackend(BackendProtocol):
         except ValueError as e:
             return f"Error: {e}"
 
-        return format_read_response(file_data, offset, limit)
+        return slice_read_response(file_data, offset, limit)
 
     def write(
         self,

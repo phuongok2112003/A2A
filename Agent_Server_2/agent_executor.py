@@ -24,6 +24,8 @@ from Agent_Server.agent_executor import BaseAgentExecutor
 from typing import Callable
 from schemas.base import ServerAgentRequest
 from until.convert import string_to_dict
+from pprint import pprint
+from config.logger import log
 class CurrencyAgentExecutor(BaseAgentExecutor):
     """
     Currency conversion agent using A2A task-based streaming.
@@ -54,6 +56,11 @@ class CurrencyAgentExecutor(BaseAgentExecutor):
             print(f"[INFO] Context ID: {context.context_id}")
             print(f"[DEBUG] Message parts: {context.get_user_input()}")
 
+
+
+            print("[INFO] Context:")
+            log.info(f"Task ID: {context.task_id}, Context ID: {context.context_id}")
+            log.info(f"Context {context.__dict__}")
             
             task = context.current_task
             updater = TaskUpdater(event_queue = event_queue,task_id = context.task_id, context_id = context.context_id)
@@ -70,7 +77,7 @@ class CurrencyAgentExecutor(BaseAgentExecutor):
                     message=new_agent_text_message("Processing currency conversion...",task.context_id, task.id)
                 )
             
-            request_agent = ServerAgentRequest(context_id=task.context_id, task_id= task.id,
+            request_agent = ServerAgentRequest(context_id=task.context_id+"_ofServer2", task_id= task.id,
                                                input_payload=context.message)
 
             await self.run_astream_in_agent_server(client=updater,server_agent=request_agent)

@@ -1,0 +1,143 @@
+2026-06-11 16:45:54 | INFO | A2A_Application | logger.py:82 | Starting application...
+2026-06-11 16:45:58 | ERROR | A2A_Application | logger.py:100 | Startup failed
+Traceback (most recent call last):
+  File "D:\A2A\main.py", line 44, in lifespan
+    async with engine.begin() as conn:
+  File "C:\Users\nguyenxuanphuong\AppData\Local\Programs\Python\Python312\Lib\contextlib.py", line 210, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nguyenxuanphuong\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\ext\asyncio\engine.py", line 1068, in begin
+    async with conn:
+  File "C:\Users\nguyenxuanphuong\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\ext\asyncio\base.py", line 121, in __aenter__
+    return await self.start(is_ctxmanager=True)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nguyenxuanphuong\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\ext\asyncio\engine.py", line 275, in start
+    await greenlet_spawn(self.sync_engine.connect)
+  File "C:\Users\nguyenxuanphuong\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 201, in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nguyenxuanphuong\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\engine\base.py", line 3285, in connect
+    return self._connection_cls(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nguyenxuanphuong\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\engine\base.py", line 143, in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nguyenxuanphuong\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\engine\base.py", line 3309, in raw_connection
+    return self.pool.connect()
+           ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nguyenxuanphuong\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\pool\base.py", line 447, in connect
+    return _ConnectionFairy._checkout(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nguyenxuanphuong\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\pool\base.py", line 1264, in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nguyenxuanphuong\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\pool\base.py", line 711, in checkout
+    rec = pool._do_get()
+          ^^^^^^^^^^^^^^
+  File "C:\Users\nguyenxuanphuong\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\pool\impl.py", line 177, in _do_get
+    with util.safe_reraise():
+  File "C:\Users\nguyenxuanphuong\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\util\langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "C:\Users\nguyenxuanphuong\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\pool\impl.py", line 175, in _do_get
+    return self._create_connection()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nguyenxuanphuong\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\pool\base.py", line 388, in _create_connection
+    return _ConnectionRecord(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nguyenxuanphuong\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\pool\base.py", line 673, in __init__
+    self.__connect()
+  File "C:\Users\nguyenxuanphuong\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\pool\base.py", line 899, in __connect
+    with util.safe_reraise():
+  File "C:\Users\nguyenxuanphuong\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\util\langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "C:\Users\nguyenxuanphuong\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\pool\base.py", line 895, in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nguyenxuanphuong\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\engine\create.py", line 661, in connect
+    return dialect.connect(*cargs, **cparams)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nguyenxuanphuong\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\engine\default.py", line 630, in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nguyenxuanphuong\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py", line 955, in connect
+    await_only(creator_fn(*arg, **kw)),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nguyenxuanphuong\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 132, in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nguyenxuanphuong\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 196, in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+  File "C:\Users\nguyenxuanphuong\AppData\Local\Programs\Python\Python312\Lib\site-packages\asyncpg\connection.py", line 2329, in connect
+    return await connect_utils._connect(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nguyenxuanphuong\AppData\Local\Programs\Python\Python312\Lib\site-packages\asyncpg\connect_utils.py", line 991, in _connect
+    conn = await _connect_addr(
+           ^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nguyenxuanphuong\AppData\Local\Programs\Python\Python312\Lib\site-packages\asyncpg\connect_utils.py", line 828, in _connect_addr
+    return await __connect_addr(params, True, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nguyenxuanphuong\AppData\Local\Programs\Python\Python312\Lib\site-packages\asyncpg\connect_utils.py", line 876, in __connect_addr
+    await connected
+asyncpg.exceptions.InvalidCatalogNameError: database "my_agent" does not exist
+2026-06-11 16:45:58 | INFO | A2A_Application | logger.py:82 | Shutting down...
+2026-06-11 16:49:01 | INFO | A2A_Application | logger.py:82 | Starting application...
+2026-06-11 16:49:13 | ERROR | A2A_Application | logger.py:100 | Startup failed
+Traceback (most recent call last):
+  File "D:\A2A\main.py", line 49, in lifespan
+    await app.state.chat_service.init()
+  File "D:\A2A\services\chat_service.py", line 23, in init
+    self.agent = await AgentCustom.create(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\A2A\agent.py", line 321, in create
+    self.agent = self.gen_agent()
+                 ^^^^^^^^^^^^^^^^
+  File "D:\A2A\agent.py", line 575, in gen_agent
+    agent = create_deep_agent(
+            ^^^^^^^^^^^^^^^^^^
+  File "D:\A2A\common\create_agent.py", line 346, in create_deep_agent
+    SubAgentMiddleware(
+TypeError: SubAgentMiddleware.__init__() got an unexpected keyword argument 'default_model'
+2026-06-11 16:49:13 | INFO | A2A_Application | logger.py:82 | Shutting down...
+2026-06-11 16:58:51 | INFO | A2A_Application | logger.py:82 | Starting application...
+2026-06-11 16:59:01 | ERROR | A2A_Application | logger.py:100 | Startup failed
+Traceback (most recent call last):
+  File "D:\A2A\main.py", line 49, in lifespan
+    await app.state.chat_service.init()
+  File "D:\A2A\services\chat_service.py", line 23, in init
+    self.agent = await AgentCustom.create(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\A2A\agent.py", line 321, in create
+    self.agent = self.gen_agent()
+                 ^^^^^^^^^^^^^^^^
+  File "D:\A2A\agent.py", line 575, in gen_agent
+    agent = create_deep_agent(
+            ^^^^^^^^^^^^^^^^^^
+  File "D:\A2A\common\create_agent.py", line 346, in create_deep_agent
+    SubAgentMiddleware(
+TypeError: SubAgentMiddleware.__init__() got an unexpected keyword argument 'model'
+2026-06-11 16:59:01 | INFO | A2A_Application | logger.py:82 | Shutting down...
+2026-06-11 17:07:24 | INFO | A2A_Application | logger.py:82 | Starting application...
+2026-06-11 17:07:35 | ERROR | A2A_Application | logger.py:100 | Startup failed
+Traceback (most recent call last):
+  File "D:\A2A\main.py", line 49, in lifespan
+    await app.state.chat_service.init()
+  File "D:\A2A\services\chat_service.py", line 23, in init
+    self.agent = await AgentCustom.create(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\A2A\agent.py", line 321, in create
+    self.agent = self.gen_agent()
+                 ^^^^^^^^^^^^^^^^
+  File "D:\A2A\agent.py", line 575, in gen_agent
+    agent = create_deep_agent(
+            ^^^^^^^^^^^^^^^^^^
+  File "D:\A2A\common\create_agent.py", line 346, in create_deep_agent
+    SubAgentMiddleware(
+TypeError: SubAgentMiddleware.__init__() got an unexpected keyword argument 'default_model'
+2026-06-11 17:07:35 | INFO | A2A_Application | logger.py:82 | Shutting down...
+2026-06-11 17:11:17 | INFO | A2A_Application | logger.py:82 | Starting application...
+2026-06-11 17:11:31 | INFO | A2A_Application | logger.py:82 | Application startup completed
+2026-06-11 17:16:36 | INFO | A2A_Application | logger.py:82 | Starting application...
+2026-06-11 17:16:47 | INFO | A2A_Application | logger.py:82 | Application startup completed
+2026-06-11 17:23:45 | INFO | A2A_Application | logger.py:82 | Starting application...
+2026-06-11 17:23:57 | INFO | A2A_Application | logger.py:82 | Application startup completed

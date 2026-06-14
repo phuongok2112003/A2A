@@ -172,15 +172,13 @@ async def process_question(  user_id: str = Form(...),
 
         image_bytes = await image.read()
     
-
+    config = ConfigConversation(user_id=user_id, context_id=context_id,type_config_conversation=TypeConfigConversation.BOT)
     res = await chat_service.process_chat(
-        user_id=user_id,
-        context_id=context_id,
         user_input_text=user_input_text,
         user_input_url_photo=user_input_url_photo,
-        image_bytes=image_bytes
+        config = config
     )
 
     return res
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=10000, log_level="info", reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=10000, log_level="info", reload=True)

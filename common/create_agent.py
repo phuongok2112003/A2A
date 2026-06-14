@@ -24,7 +24,12 @@ from deepagents.middleware.filesystem import FilesystemMiddleware
 from deepagents.middleware.memory import MemoryMiddleware
 from deepagents.middleware.patch_tool_calls import PatchToolCallsMiddleware
 from deepagents.middleware.skills import SkillsMiddleware
-from deepagents.middleware.subagents import CompiledSubAgent, SubAgent, SubAgentMiddleware
+from deepagents.middleware.subagents import (
+    CompiledSubAgent,
+    GENERAL_PURPOSE_SUBAGENT,
+    SubAgent,
+    SubAgentMiddleware,
+)
 from deepagents.middleware.summarization import SummarizationMiddleware
 
 BASE_AGENT_PROMPT = "In order to complete the objective that the user asks of you, you have access to a number of standard tools."
@@ -332,6 +337,41 @@ def create_deep_agent(
         ]
     )
 
+    inline_subagents: list[SubAgent | CompiledSubAgent] = []
+    for spec in subagents or []:
+        if "runnable" in spec:
+            inline_subagents.append(spec)
+            continue
+
+        subagent_model = spec.get("model", model)
+        if isinstance(subagent_model, str):
+            subagent_model = init_chat_model(subagent_model)
+
+        processed_spec: SubAgent = {
+            **spec,
+            "model": subagent_model,
+            "tools": spec.get("tools", tools or []),
+            "middleware": [
+                *subagent_middleware,
+                *spec.get("middleware", []),
+            ],
+        }
+        subagent_interrupt_on = spec.get("interrupt_on", interrupt_on)
+        if subagent_interrupt_on is not None:
+            processed_spec["interrupt_on"] = subagent_interrupt_on
+        inline_subagents.append(processed_spec)
+
+    if not any(spec["name"] == GENERAL_PURPOSE_SUBAGENT["name"] for spec in inline_subagents):
+        general_purpose_spec: SubAgent = {
+            **GENERAL_PURPOSE_SUBAGENT,
+            "model": model,
+            "tools": tools or [],
+            "middleware": subagent_middleware,
+        }
+        if interrupt_on is not None:
+            general_purpose_spec["interrupt_on"] = interrupt_on
+        inline_subagents.insert(0, general_purpose_spec)
+
     # Build main agent middleware stack
     deepagent_middleware: list[AgentMiddleware] = [
         TodoListMiddleware(),
@@ -344,12 +384,8 @@ def create_deep_agent(
         [
             FilesystemMiddleware(backend=backend, custom_tool_descriptions=CUSTOM_TOOL_DESCRIPTIONS),
             SubAgentMiddleware(
-                default_model=model,
-                default_tools=tools,
-                subagents=subagents if subagents is not None else [],
-                default_middleware=subagent_middleware,
-                default_interrupt_on=interrupt_on,
-                general_purpose_agent=True,
+                backend=backend,
+                subagents=inline_subagents,
             ),
             SummarizationMiddleware(
                 model=summary_model if models else model,

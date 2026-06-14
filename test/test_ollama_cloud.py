@@ -3,7 +3,7 @@
 
 # client = Client(
 #     host="https://ollama.com",
-#     headers={'Authorization': 'Bearer ' + "1e2fa8fdacc84de7b504741e0a2a2a7b.-Ar-eKGHM4pnbwwHZ5vSc1xv"}
+#     headers={'Authorization': 'Bearer ' + os.environ["OLLAMA_KEY"]}
 # )
 
 # messages = [

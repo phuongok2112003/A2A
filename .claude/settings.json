@@ -14,7 +14,7 @@
   },
   "effortLevel": "high",
   "env":{
-    "ANTHROPIC_AUTH_TOKEN": "1e2fa8fdacc84de7b504741e0a2a2a7b.-Ar-eKGHM4pnbwwHZ5vSc1xv",
+    "ANTHROPIC_AUTH_TOKEN": "",
     "ANTHROPIC_API_KEY": "",
     "ANTHROPIC_BASE_URL": "https://ollama.com",
     "ANTHROPIC_MODEL": "nemotron-3-super:cloud"

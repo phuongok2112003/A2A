@@ -22,6 +22,8 @@ from deepagents.backends import CompositeBackend, StateBackend, FilesystemBacken
 from memory.memory_store_backend import CustomsStoreBackend
 from a2a.types import FileWithBytes
 from config.logger import log
+from config.langfuse_config import langfuse_handler, langfuse, handler_session_langfuse
+from common.process_interrupt import process_interrupt
 import traceback
 import base64
 from langgraph.store.memory import InMemoryStore
@@ -402,10 +404,13 @@ class AgentCustom:
             agent_info = self.agent_registry.get(agent_name)
 
             current_thread_id = config.get("configurable", {}).get("thread_id")
+            user_id = config.get("configurable", {}).get("user_id")
 
             # Fallback nếu không có
             if not current_thread_id:
                 current_thread_id = uuid4().hex
+            if not user_id:
+                user_id = "unknown_user"
 
             print(f"Đang xử lý trong Context ID: {current_thread_id}")
 
@@ -416,7 +421,7 @@ class AgentCustom:
             agent_client = agent_info["client"]
             agent_url = agent_info["url"]
 
-            print(f"Đang gọi {agent_name} tại {agent_url}...")
+            log.info(f"Đang gọi {agent_name} tại {agent_url}... {agent_card}")
 
             parts = [DataPart(data={"type":"input_user",
                                     "data": query
@@ -456,7 +461,7 @@ class AgentCustom:
             message = Message(
                 messageId=uuid4().hex,
                 role="user",
-                context_id=current_thread_id,
+                context_id=current_thread_id + "____" + user_id,
                 parts=parts,
             )
 
@@ -486,11 +491,7 @@ class AgentCustom:
                                     context_id=context_id,
                                     parts=[
                                         DataPart(
-                                            data={"type": "command", "data": {
-                                                "decisions": await process_mess_interrupt(
-                                                    hitl_request=data
-                                                )
-                                            }}
+                                            data={"type": "command", "data":  await process_mess_interrupt(hitl_request=data)}
                                         ),
                                         DataPart(
                                             data={"type":"user_id",
@@ -504,7 +505,7 @@ class AgentCustom:
                                 final_result = chunk_text.get("text")
                                 break
 
-                print("Final resuldt huhu", final_result, end="\n\n", flush=True)
+                log.info(f"\nFinal resuldt huhu {final_result}")
                 return (
                     final_result
                     if final_result
@@ -888,7 +889,7 @@ Hãy thực thi tool này với các tham số đã sửa."""
                 if isinstance(msg, AIMessage) and msg.content:
                     yield msg.content
                     return
-
+    @handler_session_langfuse
     async def run_astream_fixed(self, config_conversation : ConfigConversation, user_input_text: str = None, user_input_url_photo: str  = None):
         config = {
             "configurable": {
@@ -897,6 +898,7 @@ Hãy thực thi tool này với các tham số đã sửa."""
                 "type_config": config_conversation.type_config_conversation
             },
             "recursion_limit": self.recursion_limit,
+            "callbacks": [langfuse_handler]
         }
 
         content = []
@@ -940,46 +942,7 @@ Hãy thực thi tool này với các tham số đã sửa."""
                         decisions = await process_mess_interrupt(
                             hitl_request=interrupt_event
                         )
-                        
-                        # Decide cách resume
-
-                        edited_action = decisions[0].get('edited_action')
-                        tool_name = edited_action.get('name')
-                        tool_args = edited_action.get('args')
-
-                        print(f"📝 User edited action:")
-                        print(f"   Tool: {tool_name}")
-                        print(f"   New Args: {tool_args}")
-                        decision_type = decisions[0].get('type') if decisions else 'approve'
-                        if decision_type == "approve":
-                            current_input = Command(resume={"decisions": decisions})
-                        elif decision_type == "edit":
-                            # User chỉnh sửa → xóa state cũ, input lại
-                                  # Tạo message với command để agent biết tool nào sẽ được gọi
-                            command_content = f"""Toi muốn chạy tool này với 
-                            [TOOL CALL COMMAND]
-Tool: {tool_name}
-Args: {tool_args}
-
-Hãy thực thi tool này với các tham số đã sửa. 
-***Có thể các tham số mới có thể thay thế ý định ban đầu của tôi nhưng hãy chạy tool này với tham só này***"""
-                          
-                            # self.agent.update_state(config=config, v)
-                            msg = (HumanMessage(
-                                content=[{"type": "text", "text": command_content}]
-                            ))
-                            self.agent.update_state(config=config, values={"messages": [msg]})
-                            # current_input = {"messages": new_messages}
-                        else:  # reject
-                            # Dừng lại, không tiếp tục
-                            reason = decisions[0].get('message')
-                            msg = (HumanMessage(
-                                content=[{"type": "text", "text": f"Tôi khong muốn chạy tool này nữa với lý do: {reason}"}]
-                            ))
-                            self.agent.update_state(config=config, values={"messages": [msg]})
-                            # yield {"type": "info", "message": "Tool call đã bị reject"}
-                            
-                        current_input = Command(resume={"decisions": decisions})
+                        current_input = process_interrupt(decisions=decisions, agent=self.agent, config=config)
                         break  # Break khỏi astream, loop while để invoke lại
 
                 if not has_interrupt:
